@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>ProjectConnect – College Project Collaboration</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://meet.jit.si/external_api.js"></script>
+  <script src="script.js" defer></script>
+</head>
+
+<body>
+  <!-- Animated Background -->
+  <div class="bg-animation">
+    <div class="bg-blob blob-1"></div>
+    <div class="bg-blob blob-2"></div>
+    <div class="bg-blob blob-3"></div>
+  </div>
+
+  <div class="app-shell" id="appShell">
+    <!-- Top nav -->
+    <header class="nav">
+      <div class="nav-left">
+        <div class="logo-chip">PC</div>
+        <div class="app-title-block">
+          <div class="app-title">
+            ProjectConnect
+            <span class="college-pill">College‑only projects</span>
+          </div>
+          <div class="app-subtitle">
+            Discover ideas • Form teams • Ship original work
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <!-- Search bar -->
+        <div class="nav-search-wrapper">
+          <input type="search" id="globalSearch" class="nav-search-input"
+            placeholder="Search (home, student flow...)" />
+          <i data-lucide="search" class="nav-search-icon"></i>
+        </div>
+
+        <div class="nav-actions">
+          <button class="pill-btn notification-btn" id="openNotifications">
+            <i data-lucide="bell" class="icon"></i>
+            <span class="badge-dot" id="notifBadge"></span>
+          </button>
+
+          <button class="pill-btn" id="openLogin" style="display:none;"> <!-- Hidden initially -->
+            <i data-lucide="user" class="icon"></i>
+            Login
+          </button>
+          <button class="pill-btn" id="openHome">
+            <i data-lucide="home" class="icon"></i>
+            Home
+          </button>
+          <button class="pill-btn" id="openAbout">
+            <i data-lucide="info" class="icon"></i>
+            About
+          </button>
+
+          <button class="pill-btn" id="openCollabTop">
+            <i data-lucide="handshake" class="icon"></i>
+            Collaborations
+          </button>
+          <button class="pill-btn pill-btn-primary" id="openPost">
+            <i data-lucide="plus" class="icon"></i>
+            Post project
+          </button>
+        </div>
+
+        <!-- Dashboard hamburger -->
+        <div class="dashboard-toggle" id="dashboardToggle" aria-label="Open dashboard">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Dashboard side panel -->
+    <aside class="dashboard-panel" id="dashboardPanel">
+      <div class="dashboard-header">
+        <div class="dashboard-title">Dashboard</div>
+        <button class="dashboard-close" id="dashboardClose"><i data-lucide="x" style="width:16px; height:16px;"></i></button>
+      </div>
+      <div class="dashboard-menu">
+        <button class="dashboard-btn" data-target="home">
+          <i data-lucide="home" class="icon"></i> Home
+        </button>
+        <button class="dashboard-btn" data-target="collaboration">
+          <i data-lucide="handshake" class="icon"></i> Collaboration
+        </button>
+        <button class="dashboard-btn" data-target="chatbot">
+          <i data-lucide="bot" class="icon"></i> AI Chat Bot
+        </button>
+      </div>
+
+      <!-- AI Chat Bot -->
+      <div class="chatbot" id="chatbotSection">
+        <div class="chatbot-header">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <i data-lucide="bot" class="icon"></i>
+            <div>
+              <div style="font-weight:700;font-size:12px;">ProjectConnect AI</div>
+              <div style="font-size:10px;color:#4ade80;display:flex;align-items:center;gap:4px;">
+                <span class="dot" style="background:#4ade80;width:6px;height:6px;border-radius:50%;display:inline-block;"></span> Powered by Gemini
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="chatbot-messages" id="chatMessages">
+          <div class="chat-msg bot">
+            👋 Hi! I'm your <strong>ProjectConnect AI Assistant</strong> powered by Google Gemini.<br><br>
+            Ask me anything — project ideas, team tips, tech stacks, or how to use this platform!
+          </div>
+        </div>
+        <div id="chatTypingIndicator" class="chat-typing" style="display:none;">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="chatbot-input-row">
+          <input type="text" id="chatInput" class="chatbot-input" placeholder="Ask me anything..." />
+          <button class="chatbot-send" id="chatSend">
+            <i data-lucide="send" style="width:14px;height:14px;"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="layout">
+      <!-- PAGE: HOME -->
+      <div id="page-home" class="page-view active">
+        <!-- Hero -->
+        <section class="card">
+          <div class="card-inner">
+            <div class="hero-eyebrow">
+              <span class="hero-eyebrow-dot"></span>
+              Project selection, team formation & collaboration in one place
+            </div>
+            <h1 class="hero-title">
+              Stop copying projects. <span class="hero-highlight">Build originals with the right team.</span>
+            </h1>
+            <p class="hero-subtitle">
+              ProjectConnect helps college students discover domain‑based ideas, recruit like‑minded teammates, and
+              collaborate inside a single workspace built for academic projects.
+            </p>
+
+            <div class="hero-tags">
+              <span class="tag-chip">
+                <span class="tag-dot"></span> AI • Web • Data • SE
+              </span>
+              <span class="tag-chip">
+                <span class="tag-dot"></span> Final‑year friendly
+              </span>
+              <span class="tag-chip">
+                <span class="tag-dot"></span> Cross‑college collaboration
+              </span>
+            </div>
+
+            <div class="hero-problems">
+              <div class="problem-box">
+                <div class="problem-glow"></div>
+                <div class="problem-label">Today’s reality</div>
+                <div class="problem-title">Scattered ideas. Random teams.</div>
+                <ul class="problem-points">
+                  <li>
+                    <span class="problem-x">✖</span>
+                    <span>No central hub for project ideas</span>
+                  </li>
+                  <li>
+                    <span class="problem-x">✖</span>
+                    <span>Confusing team formation</span>
+                  </li>
+                  <li>
+                    <span class="problem-x">✖</span>
+                    <span>Copy‑paste final‑year projects</span>
+                  </li>
+                </ul>
+              </div>
+              <div class="problem-box">
+                <div class="problem-label">With ProjectConnect</div>
+                <div class="problem-title">College‑only project network.</div>
+                <ul class="problem-points">
+                  <li>
+                    <span class="problem-x" style="color:#22c55e;">✔</span>
+                    <span>Domain‑based project discovery</span>
+                  </li>
+                  <li>
+                    <span class="problem-x" style="color:#22c55e;">✔</span>
+                    <span>Built‑in team recruitment</span>
+                  </li>
+                  <li>
+                    <span class="problem-x" style="color:#22c55e;">✔</span>
+                    <span>Collaboration room for every team</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="hero-cta-row">
+              <button class="pill-btn pill-btn-primary" id="getStartedBtn">
+                <i data-lucide="rocket" class="icon"></i>
+                Get started – it’s free
+              </button>
+              <span class="hero-cta-note">
+                <span class="hero-cta-dot"></span>
+                Final‑year, mini‑project & company‑guided work supported
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Domain Explorer -->
+        <section class="card" id="domainSection">
+          <div class="card-inner">
+            <div class="section-header">
+              <h2 class="section-title">Browse by domain</h2>
+              <p class="section-subtitle">Pick a domain to view curated project ideas.</p>
+            </div>
+
+            <div class="tabs">
+              <button class="tab-btn active" data-domain="ai">
+                <span class="tab-dot"></span> AI / ML
+              </button>
+              <button class="tab-btn" data-domain="web">
+                <span class="tab-dot"></span> Web Development
+              </button>
+              <button class="tab-btn" data-domain="data">
+                <span class="tab-dot"></span> Data Science
+              </button>
+              <button class="tab-btn" data-domain="se">
+                <span class="tab-dot"></span> Software Engineering
+              </button>
+            </div>
+
+            <div class="projects-grid" id="projectsGrid">
+              <!-- Projects rendered by JS -->
+            </div>
+          </div>
+        </section>
+        <!-- PAGE: NOTIFICATIONS -->
+        <div id="page-notifications" class="page-view">
+          <section class="card">
+            <div class="card-inner">
+              <div class="section-header">
+                <h2 class="section-title">Notifications</h2>
+                <button class="pill-mini" id="clearNotifsPage"
+                  style="border:1px solid rgba(55,65,81,0.5); cursor:pointer;">Clear All</button>
+              </div>
+              <div class="notif-list" id="notifListPage">
+                <!-- Items injected by JS -->
+                <div class="notif-empty">No new notifications</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- PAGE: COLLABORATION -->
+      <div id="page-collaboration" class="page-view">
+
+        <!-- Team Workspace (Group Chat & Meeting) -->
+        <section class="card collab-workspace-card">
+          <div class="card-inner collab-workspace-inner">
+            <div class="section-header">
+              <div>
+                <h2 class="section-title">Team Workspace: <span id="teamRoomTitle" style="color:#38bdf8;">AI
+                    Project</span></h2>
+                <div class="pill-mini"><span class="dot"></span> Online</div>
+              </div>
+              <button class="pill-btn pill-btn-primary" id="startMeetingBtn">
+                <i data-lucide="video" class="icon"></i> Join Virtual Meeting
+              </button>
+            </div>
+
+            <div class="team-layout">
+              <!-- Sidebar: Members -->
+              <div class="team-sidebar">
+                <div class="section-label">Team Members</div>
+                <div class="member-item">
+                  <div class="member-avatar" style="background:#38bdf8">U</div>
+                  <div class="member-info">
+                    <div class="member-name">You</div>
+                    <div class="member-role">Team Lead</div>
+                  </div>
+                </div>
+                <!-- Other members will be populated dynamically -->
+              </div>
+
+              <!-- Chat Area -->
+              <div class="team-chat-container">
+                <div class="team-chat-messages" id="teamChatMessages">
+                  <div class="date-divider">Team Room Created</div>
+                  <!-- Chat messages will appear here -->
+                </div>
+                <div class="team-chat-input">
+                  <input type="text" placeholder="Type a message..." id="teamChatInput">
+                  <button id="teamChatSend">
+                    <i data-lucide="send" class="icon"></i>
+                    <span>Send</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="studentFlowSection">
+          <div class="card-inner">
+            <div class="section-header">
+              <h2 class="section-title">Student flow</h2>
+              <p class="section-subtitle">From idea discovery to collaboration.</p>
+            </div>
+
+            <div class="flow-timeline">
+              <div class="flow-step">
+                <div class="flow-step-index">1</div>
+                <div class="flow-step-body">
+                  <div class="flow-step-title">Discover domain‑based ideas</div>
+                  <p class="flow-step-desc">
+                    Filter ideas by AI, Web, Data Science, and Software Engineering with tags for final‑year,
+                    mini‑project, and company‑guided work.
+                  </p>
+                  <div class="flow-tags">
+                    <span class="flow-tag-pill">Smart search</span>
+                    <span class="flow-tag-pill">College‑only feed</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flow-step">
+                <div class="flow-step-index">2</div>
+                <div class="flow-step-body">
+                  <div class="flow-step-title">Post your own project</div>
+                  <p class="flow-step-desc">
+                    Publish project ideas with required skills, teammate count, and collaboration preferences.
+                  </p>
+                  <div class="flow-tags">
+                    <span class="flow-tag-pill">Skill tags</span>
+                    <span class="flow-tag-pill">Teammate slots</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flow-step">
+                <div class="flow-step-index">3</div>
+                <div class="flow-step-body">
+                  <div class="flow-step-title">Form or join teams</div>
+                  <p class="flow-step-desc">
+                    Request to join existing projects or accept join requests on yours; no random WhatsApp groups
+                    required.
+                  </p>
+                  <div class="flow-tags">
+                    <span class="flow-tag-pill">Cross‑college teams</span>
+                    <span class="flow-tag-pill">Profile‑based matching</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flow-step">
+                <div class="flow-step-index">4</div>
+                <div class="flow-step-body">
+                  <div class="flow-step-title">Collaborate in one workspace</div>
+                  <p class="flow-step-desc">
+                    Use built‑in chat, task board, and virtual meeting room so project discussions stay in one place.
+                  </p>
+                  <div class="flow-tags">
+                    <span class="flow-tag-pill">Meetings</span>
+                    <span class="flow-tag-pill">Task board</span>
+                    <span class="flow-tag-pill">File sharing</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- PAGE: POST PROJECT -->
+      <div id="page-post-project" class="page-view">
+        <section class="card" id="postProjectSection">
+          <div class="card-inner">
+            <div class="section-header">
+              <h2 class="section-title">Post a project</h2>
+              <p class="section-subtitle">College‑only, academic projects.</p>
+            </div>
+
+            <form id="projectForm">
+              <div class="form-grid">
+                <div class="field">
+                  <label class="field-label">Project title</label>
+                  <input type="text" class="field-input" placeholder="AI‑powered attendance analyzer" required />
+                </div>
+
+                <div class="field">
+                  <label class="field-label">Domain</label>
+                  <select class="field-select" required>
+                    <option value="">Select domain</option>
+                    <option value="ai">AI / ML</option>
+                    <option value="web">Web Development</option>
+                    <option value="data">Data Science</option>
+                    <option value="se">Software Engineering</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label class="field-label">Required skills</label>
+                  <input type="text" class="field-input" placeholder="React, Firebase, ML basics..." />
+                </div>
+
+                <div class="field">
+                  <label class="field-label">Teammates needed</label>
+                  <input type="number" class="field-input" min="1" max="6" placeholder="3" />
+                </div>
+
+                <div class="field" style="grid-column: 1 / -1;">
+                  <label class="field-label">Short description</label>
+                  <textarea class="field-textarea"
+                    placeholder="Explain the idea, expected outcome, and tech stack..."></textarea>
+                </div>
+              </div>
+
+              <label class="field-checkbox">
+                <input type="checkbox" id="collegeOnlyCheckbox" />
+                This is a college‑related academic project only.
+              </label>
+
+              <div class="form-footer">
+                <span class="form-note">
+                  Future scope: AI‑based recommendations, skill matching & industry mentors.
+                </span>
+                <button class="submit-btn" type="submit">
+                  <span>Publish idea</span>
+                  <span>⮞</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
+
+      <!-- PAGE: ABOUT -->
+      <div id="page-about" class="page-view">
+        <section class="card" id="aboutSection">
+          <div class="card-inner">
+            <div class="section-header">
+              <h2 class="section-title">About ProjectConnect</h2>
+            </div>
+            
+            <div style="font-size:13px; line-height:1.7; color:var(--text); display: flex; flex-direction: column; gap: 16px;">
+              <p>
+                <strong style="color: #38bdf8;">ProjectConnect</strong> is an exclusive platform designed to bridge the gap between students, innovative ideas, and successful team execution in the academic landscape. Our mission is to eliminate the cycle of repetitive, plagiarized college projects and foster a culture of genuine innovation and cross-disciplinary collaboration.
+              </p>
+              
+              <div>
+                <h3 style="font-size:14px; font-weight:600; color:#e5e7eb; margin-bottom: 8px;">Our Core Features</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                  <div style="background: rgba(15, 23, 42, 0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(55, 65, 81, 0.5);">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: #38bdf8;">
+                      <i data-lucide="lightbulb" style="width:16px; height:16px;"></i>
+                      <strong>Idea Discovery</strong>
+                    </div>
+                    <p style="font-size: 12px; color: var(--muted);">Explore unique, domain-specific project ideas pitched by peers. Stop recycling old projects and start building something that matters.</p>
+                  </div>
+                  
+                  <div style="background: rgba(15, 23, 42, 0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(55, 65, 81, 0.5);">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: #a855f7;">
+                      <i data-lucide="users" style="width:16px; height:16px;"></i>
+                      <strong>Smart Team Formation</strong>
+                    </div>
+                    <p style="font-size: 12px; color: var(--muted);">Find teammates with the exact complementary skills you need. Post openings and recruit across different departments and years.</p>
+                  </div>
+
+                  <div style="background: rgba(15, 23, 42, 0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(55, 65, 81, 0.5);">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: #22c55e;">
+                      <i data-lucide="layout-dashboard" style="width:16px; height:16px;"></i>
+                      <strong>Unified Workspace</strong>
+                    </div>
+                    <p style="font-size: 12px; color: var(--muted);">Collaborate in real-time with integrated group chats, virtual video meetings, and task tracking—all without leaving the platform.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 style="font-size:14px; font-weight:600; color:#e5e7eb; margin-bottom: 8px;">Why We Built This</h3>
+                <p style="color: var(--muted);">
+                  We believe every student deserves a team that matches their energy. Too often, great ideas are lost because students don't know who has the right coding, design, or research skills in their college. ProjectConnect was built by students, for students, to make finding a co-founder for your final-year or mini-project as easy as sending a text.
+                </p>
+              </div>
+            </div>
+            
+          </div>
+        </section>
+      </div>
+
+
+
+    </main>
+
+    <!-- Bottom strip -->
+    <section class="bottom-strip">
+      <div class="badges-row">
+        <span class="badge-soft">
+          <i data-lucide="graduation-cap" class="icon"></i>
+          Loved by examiners &amp; interviewers
+        </span>
+        <span class="badge-soft">
+          <i data-lucide="handshake" class="icon"></i>
+          Final‑year • Mini‑project • Company‑guided
+        </span>
+        <span class="badge-soft">
+          <i data-lucide="brain" class="icon"></i>
+          Not just another CRUD app
+        </span>
+      </div>
+      <span>ProjectConnect simplifies project selection, team formation, and collaboration for students.</span>
+    </section>
+
+    <!-- Footer Copyright -->
+    <footer class="app-footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="logo-chip" style="width:26px;height:26px;font-size:14px;border-radius:8px;">P</div>
+          <span class="footer-brand-name">ProjectConnect</span>
+        </div>
+        <div class="footer-links">
+          <a href="#" onclick="navigateTo('home'); return false;">Home</a>
+          <a href="#" onclick="navigateTo('collaboration'); return false;">Collaborate</a>
+          <a href="#" onclick="navigateTo('post-project'); return false;">Post Project</a>
+          <a href="#" onclick="navigateTo('about'); return false;">About</a>
+        </div>
+        <div class="footer-copy">
+          <i data-lucide="shield-check" style="width:13px;height:13px;color:#38bdf8;"></i>
+          &copy; <span id="footerYear"></span> ProjectConnect. All rights reserved.
+        </div>
+      </div>
+      <div class="footer-divider"></div>
+      <div class="footer-bottom">
+        <span>Built with <i data-lucide="heart" style="width:12px;height:12px;color:#ef4444;display:inline-block;vertical-align:middle;"></i> for students, by students.</span>
+        <span>Unauthorized reproduction or distribution is strictly prohibited.</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Virtual Meeting Overlay (Jitsi Meet) -->
+  <div class="meeting-overlay" id="meetingOverlay">
+    <div class="meeting-container daily-meeting-container" id="jitsiContainer">
+
+      <div class="daily-topbar">
+        <div class="daily-topbar-left">
+          <div class="daily-logo-dot"></div>
+          <span id="meetingRoomLabel">Team Meeting</span>
+          <div class="meeting-live-badge"><span class="dot"></span> Live</div>
+        </div>
+        <button class="pill-btn daily-end-btn" id="leaveMeetingBtn">
+          <i data-lucide="phone-off" class="icon"></i> End Meeting
+        </button>
+      </div>
+
+      <!-- Setup Screen -->
+      <div id="jitsiSetupScreen" class="daily-setup-screen">
+        <div class="daily-setup-card">
+          <div class="daily-setup-icon">
+            <i data-lucide="video" style="width:32px;height:32px;color:#38bdf8;"></i>
+          </div>
+          <h2 class="daily-setup-title">Team Video Call</h2>
+          <p class="daily-setup-sub">Powered by <strong style="color:#38bdf8;">Jitsi Meet</strong> — free, open-source, end-to-end encrypted WebRTC video conferencing. <strong style="color:#4ade80;">No account needed.</strong></p>
+
+          <div class="daily-setup-features">
+            <div class="daily-feature-chip"><i data-lucide="video" style="width:13px;height:13px;"></i> HD Video</div>
+            <div class="daily-feature-chip"><i data-lucide="mic" style="width:13px;height:13px;"></i> Audio</div>
+            <div class="daily-feature-chip"><i data-lucide="monitor" style="width:13px;height:13px;"></i> Screen Share</div>
+            <div class="daily-feature-chip"><i data-lucide="message-square" style="width:13px;height:13px;"></i> In-Call Chat</div>
+            <div class="daily-feature-chip"><i data-lucide="hand" style="width:13px;height:13px;"></i> Raise Hand</div>
+            <div class="daily-feature-chip"><i data-lucide="lock" style="width:13px;height:13px;"></i> Encrypted</div>
+          </div>
+
+          <div class="daily-room-info">
+            <i data-lucide="link" style="width:13px;height:13px;color:#38bdf8;"></i>
+            <span id="jitsiRoomNameDisplay">Room will be created automatically</span>
+          </div>
+
+          <button class="pill-btn pill-btn-primary daily-join-btn" id="startMeetingJoinBtn">
+            <i data-lucide="video" class="icon"></i> Join Meeting — Free & Instant
+          </button>
+
+          <p class="daily-setup-hint" style="text-align:center; margin-top:4px;">
+            Rooms are auto-created · No sign-up required · Works on any device
+          </p>
+        </div>
+      </div>
+
+      <!-- Jitsi iframe is injected here -->
+      <div id="jitsiCallContainer" class="daily-call-container" style="display:none;"></div>
+
+    </div>
+  </div>
+
+  <!-- Login / Signup Modal -->
+  <div class="modal-backdrop" id="authModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Welcome to ProjectConnect</div>
+        <button class="modal-close" id="authClose" style="display:none;"><i data-lucide="x" style="width:16px; height:16px;"></i></button> <!-- Hidden initially -->
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab-btn active" data-auth-tab="login">Login</button>
+        <button class="modal-tab-btn" data-auth-tab="signup">Sign up</button>
+      </div>
+
+      <form class="modal-form" id="loginForm">
+        <label class="modal-field-label">College email</label>
+        <input type="email" class="modal-input" placeholder="you@college.edu" required />
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <label class="modal-field-label">Password</label>
+          <a href="#" id="showForgotPasswordLink" class="forgot-password-link">Forgot Password?</a>
+        </div>
+        <input type="password" class="modal-input" placeholder="••••••••" required />
+        <button type="submit" class="modal-submit">Login</button>
+        <p class="modal-note">Use your college email to keep the platform college‑only.</p>
+      </form>
+
+      <!-- STEP 1: Enter Email -->
+      <form class="modal-form hidden" id="forgotStep1Form">
+        <div class="otp-step-header">
+          <div class="otp-step-icon"><i data-lucide="mail" style="width:20px;height:20px;color:#38bdf8;"></i></div>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:#f1f5f9;">Forgot Password</div>
+            <div style="font-size:11px;color:#94a3b8;">Enter your registered email to receive an OTP</div>
+          </div>
+        </div>
+        <label class="modal-field-label">Registered Email</label>
+        <input type="email" id="otpEmailInput" class="modal-input" placeholder="you@college.edu" required />
+        <button type="submit" class="modal-submit" id="sendOtpBtn">
+          <i data-lucide="send" style="width:14px;height:14px;"></i> Send OTP
+        </button>
+        <div id="otpStep1Error" class="otp-error" style="display:none;"></div>
+        <p class="modal-note"><a href="#" id="backToLoginFromStep1" class="forgot-password-link">← Back to Login</a></p>
+      </form>
+
+      <!-- STEP 2: Enter OTP -->
+      <form class="modal-form hidden" id="forgotStep2Form">
+        <div class="otp-step-header">
+          <div class="otp-step-icon"><i data-lucide="shield-check" style="width:20px;height:20px;color:#4ade80;"></i></div>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:#f1f5f9;">Enter OTP</div>
+            <div style="font-size:11px;color:#94a3b8;" id="otpSentToLabel">OTP sent to your email</div>
+          </div>
+        </div>
+        <div id="devOtpBanner" class="dev-otp-banner" style="display:none;"></div>
+        <label class="modal-field-label">6-Digit OTP</label>
+        <div class="otp-input-row" id="otpInputRow">
+          <input class="otp-digit" type="text" maxlength="1" inputmode="numeric" />
+          <input class="otp-digit" type="text" maxlength="1" inputmode="numeric" />
+          <input class="otp-digit" type="text" maxlength="1" inputmode="numeric" />
+          <input class="otp-digit" type="text" maxlength="1" inputmode="numeric" />
+          <input class="otp-digit" type="text" maxlength="1" inputmode="numeric" />
+          <input class="otp-digit" type="text" maxlength="1" inputmode="numeric" />
+        </div>
+        <div class="otp-timer-row">
+          <span id="otpTimerLabel">OTP expires in <strong id="otpTimerCount">10:00</strong></span>
+          <button type="button" id="resendOtpBtn" class="otp-resend-btn" disabled>Resend OTP</button>
+        </div>
+        <button type="submit" class="modal-submit" id="verifyOtpBtn">
+          <i data-lucide="check-circle" style="width:14px;height:14px;"></i> Verify OTP
+        </button>
+        <div id="otpStep2Error" class="otp-error" style="display:none;"></div>
+      </form>
+
+      <!-- STEP 3: New Password -->
+      <form class="modal-form hidden" id="forgotStep3Form">
+        <div class="otp-step-header">
+          <div class="otp-step-icon"><i data-lucide="lock" style="width:20px;height:20px;color:#a78bfa;"></i></div>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:#f1f5f9;">Set New Password</div>
+            <div style="font-size:11px;color:#4ade80;">✓ Identity verified</div>
+          </div>
+        </div>
+        <label class="modal-field-label">New Password</label>
+        <input type="password" id="newPasswordInput" class="modal-input" placeholder="Minimum 6 characters" required />
+        <label class="modal-field-label">Confirm Password</label>
+        <input type="password" id="confirmPasswordInput" class="modal-input" placeholder="Repeat new password" required />
+        <button type="submit" class="modal-submit" id="resetPasswordBtn">
+          <i data-lucide="lock" style="width:14px;height:14px;"></i> Reset Password
+        </button>
+        <div id="otpStep3Error" class="otp-error" style="display:none;"></div>
+      </form>
+
+      <form class="modal-form hidden" id="signupForm">
+        <label class="modal-field-label">Full name</label>
+        <input type="text" class="modal-input" placeholder="Your name" required />
+        <label class="modal-field-label">College email</label>
+        <input type="email" class="modal-input" placeholder="you@college.edu" required />
+        <label class="modal-field-label">Password</label>
+        <input type="password" class="modal-input" placeholder="Create a password" required />
+        <button type="submit" class="modal-submit">Create account</button>
+        <p class="modal-note">After signup you can post projects and join teams.</p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Request to Join Modal -->
+  <div class="modal-backdrop hidden" id="requestModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Request to Join</div>
+        <button class="modal-close" id="requestClose"><i data-lucide="x" style="width:16px; height:16px;"></i></button>
+      </div>
+      <form class="modal-form" id="requestForm">
+        <div style="margin-bottom:8px;">
+          <span class="badge-soft" id="requestProjectTitle" style="font-size:11px;">Project Name</span>
+        </div>
+        <label class="modal-field-label">Why are you a good fit?</label>
+        <textarea class="modal-input" style="min-height:60px;" placeholder="I have experience with..."
+          required></textarea>
+
+        <label class="modal-field-label">Portfolio / Github Link</label>
+        <input type="url" class="modal-input" placeholder="https://..." />
+
+        <button type="submit" class="modal-submit">Send Request</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast">
+    <div class="toast-inner" id="toastInner">
+      <span class="toast-dot"></span>
+      <span id="toastMessage">Demo message.</span>
+      <button class="toast-close" id="toastClose"><i data-lucide="x" style="width:16px; height:16px;"></i></button>
+    </div>
+  </div>
+
+</body>
+
+</html>

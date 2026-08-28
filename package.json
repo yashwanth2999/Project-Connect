@@ -1,0 +1,17 @@
+{
+  "name": "project-connect-",
+  "version": "1.0.0",
+  "description": "ProjectConnect is a full-stack web application designed for college students to discover project ideas, recruit cross-department teammates, collaborate via real-time chat & video meetings, and leverage an AI-powered assistant for tech stack guidance.",
+  "main": "script.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "test": "node tests/test_api.js && node tests/test_e2e_browser.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer-core": "^24.43.1",
+    "socket.io-client": "^4.8.3"
+  }
+}

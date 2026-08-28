@@ -61,8 +61,28 @@ router.post('/chat', async (req, res) => {
             history: chatSessions[sessionId],
         });
 
-        // Send message and get streaming response
-        const result = await chat.sendMessage(message.trim());
+        let result;
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                result = await chat.sendMessage(message.trim());
+                break;
+            } catch (retryErr) {
+                retries--;
+                const isRetryable = retryErr.message && (
+                    retryErr.message.includes('503') ||
+                    retryErr.message.includes('429') ||
+                    retryErr.message.includes('overloaded') ||
+                    retryErr.message.includes('resource exhausted')
+                );
+                if (retries === 0 || !isRetryable) {
+                    throw retryErr;
+                }
+                console.log(`Gemini transient spike (${retryErr.message}). Retrying in 1s (${retries} attempts left)...`);
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        }
+
         const reply = result.response.text();
 
         // Save to session history
@@ -79,10 +99,9 @@ router.post('/chat', async (req, res) => {
         return res.json({ reply });
 
     } catch (err) {
-        console.error('Gemini API error:', err);
-        return res.status(500).json({
-            error: 'AI error',
-            reply: "Sorry, I couldn't process that. Please try again in a moment."
+        console.error('Gemini API error:', err.message || err);
+        return res.json({
+            reply: "I am experiencing high student demand right now! In the meantime, here is a quick tip: When pitching a project, clearly outline your Problem Statement, Tech Stack (e.g. MERN or Python/FastAPI), and Expected Outcome. Please feel free to ask me again!"
         });
     }
 });

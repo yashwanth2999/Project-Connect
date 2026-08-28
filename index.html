@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>">
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="https://meet.jit.si/external_api.js"></script>
@@ -61,10 +62,6 @@
             <i data-lucide="home" class="icon"></i>
             Home
           </button>
-          <button class="pill-btn" id="openAbout">
-            <i data-lucide="info" class="icon"></i>
-            About
-          </button>
 
           <button class="pill-btn" id="openCollabTop">
             <i data-lucide="handshake" class="icon"></i>
@@ -76,59 +73,133 @@
           </button>
         </div>
 
-        <!-- Dashboard hamburger -->
-        <div class="dashboard-toggle" id="dashboardToggle" aria-label="Open dashboard">
-          <span></span><span></span><span></span>
+        <!-- User Profile Section -->
+        <div class="profile-section" id="profileSection">
+          <button class="profile-trigger-btn" id="profileTriggerBtn" aria-label="User Profile" aria-haspopup="true" aria-expanded="false">
+            <div class="profile-avatar" id="navProfileAvatar">U</div>
+            <span class="profile-name" id="navProfileName">Student</span>
+            <i data-lucide="chevron-down" class="profile-chevron"></i>
+          </button>
+          <!-- Profile Dropdown Menu -->
+          <div class="profile-dropdown" id="profileDropdown">
+            <div class="profile-dropdown-header">
+              <div class="profile-dropdown-avatar-wrap" id="dropdownAvatarWrap" title="Click to upload profile picture">
+                <div class="profile-dropdown-avatar" id="dropdownProfileAvatar">U</div>
+                <div class="profile-avatar-overlay">
+                  <i data-lucide="camera" style="width:14px; height:14px;"></i>
+                </div>
+              </div>
+              <div class="profile-dropdown-userinfo">
+                <div class="profile-dropdown-name" id="dropdownProfileName">Student</div>
+                <div class="profile-dropdown-email" id="dropdownProfileEmail">student@college.edu</div>
+                <span class="profile-verified-badge"><i data-lucide="check" style="width:10px;height:10px;"></i> College Verified</span>
+              </div>
+            </div>
+
+            <!-- Profile Photo Upload & Remove Controls -->
+            <div class="profile-pic-actions">
+              <button class="profile-pic-btn" id="uploadPicBtn" type="button">
+                <i data-lucide="camera" style="width:12px; height:12px;"></i>
+                <span id="uploadPicLabel">Add Photo</span>
+              </button>
+              <button class="profile-pic-btn remove" id="removePicBtn" type="button" style="display:none;">
+                <i data-lucide="trash-2" style="width:12px; height:12px;"></i> Remove
+              </button>
+              <input type="file" id="profilePicInput" accept="image/png, image/jpeg, image/webp, image/gif" style="display:none;" />
+            </div>
+
+            <div class="profile-dropdown-divider"></div>
+            <div class="profile-dropdown-menu">
+              <button class="profile-dropdown-item" id="profileGoHome">
+                <i data-lucide="home" class="icon"></i> Home
+              </button>
+              <button class="profile-dropdown-item" id="profileGoCollab">
+                <i data-lucide="handshake" class="icon"></i> Collaboration Hub
+              </button>
+              <button class="profile-dropdown-item" id="profileGoPost">
+                <i data-lucide="plus-circle" class="icon"></i> Post a Project
+              </button>
+              <button class="profile-dropdown-item" id="profileGoNotifs">
+                <i data-lucide="bell" class="icon"></i> Notifications
+              </button>
+            </div>
+            <div class="profile-dropdown-divider"></div>
+            <button class="profile-logout-btn" id="profileLogoutBtn">
+              <i data-lucide="log-out" class="icon"></i> Log Out
+            </button>
+          </div>
         </div>
       </div>
     </header>
 
-    <!-- Dashboard side panel -->
-    <aside class="dashboard-panel" id="dashboardPanel">
-      <div class="dashboard-header">
-        <div class="dashboard-title">Dashboard</div>
-        <button class="dashboard-close" id="dashboardClose"><i data-lucide="x" style="width:16px; height:16px;"></i></button>
+    <!-- Floating AI Chatbot Logo Button (Bottom-Right Corner) -->
+    <button class="ai-fab-btn" id="aiFabBtn" aria-label="Open AI Assistant" title="ProjectConnect AI Assistant">
+      <div class="ai-fab-icon-inner">
+        <i data-lucide="bot" class="ai-fab-bot-icon"></i>
+        <i data-lucide="sparkles" class="ai-fab-sparkle-icon"></i>
       </div>
-      <div class="dashboard-menu">
-        <button class="dashboard-btn" data-target="home">
-          <i data-lucide="home" class="icon"></i> Home
-        </button>
-        <button class="dashboard-btn" data-target="collaboration">
-          <i data-lucide="handshake" class="icon"></i> Collaboration
-        </button>
-        <button class="dashboard-btn" data-target="chatbot">
-          <i data-lucide="bot" class="icon"></i> AI Chat Bot
-        </button>
-      </div>
+      <span class="ai-fab-pulse"></span>
+      <span class="ai-fab-badge">AI</span>
+    </button>
 
-      <!-- AI Chat Bot -->
-      <div class="chatbot" id="chatbotSection">
-        <div class="chatbot-header">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <i data-lucide="bot" class="icon"></i>
-            <div>
-              <div style="font-weight:700;font-size:12px;">ProjectConnect AI</div>
-              <div style="font-size:10px;color:#4ade80;display:flex;align-items:center;gap:4px;">
-                <span class="dot" style="background:#4ade80;width:6px;height:6px;border-radius:50%;display:inline-block;"></span> Powered by Gemini
-              </div>
+    <!-- Half-Window AI Assistant Overlay & Container -->
+    <div class="assistant-backdrop" id="assistantBackdrop"></div>
+    <aside class="assistant-half-window" id="aiAssistantWindow" aria-label="AI Project Advisor">
+      <div class="assistant-window-header">
+        <div class="assistant-header-left">
+          <div class="assistant-logo-badge">
+            <i data-lucide="bot" style="width:18px; height:18px; color:#38bdf8;"></i>
+          </div>
+          <div>
+            <div class="assistant-title">ProjectConnect AI Assistant</div>
+            <div class="assistant-subtitle">
+              <span class="assistant-online-dot"></span> Powered by Google Gemini
             </div>
           </div>
         </div>
-        <div class="chatbot-messages" id="chatMessages">
-          <div class="chat-msg bot">
-            👋 Hi! I'm your <strong>ProjectConnect AI Assistant</strong> powered by Google Gemini.<br><br>
-            Ask me anything — project ideas, team tips, tech stacks, or how to use this platform!
-          </div>
-        </div>
-        <div id="chatTypingIndicator" class="chat-typing" style="display:none;">
-          <span></span><span></span><span></span>
-        </div>
-        <div class="chatbot-input-row">
-          <input type="text" id="chatInput" class="chatbot-input" placeholder="Ask me anything..." />
-          <button class="chatbot-send" id="chatSend">
-            <i data-lucide="send" style="width:14px;height:14px;"></i>
+        <div class="assistant-header-actions">
+          <button class="assistant-action-btn" id="clearChatBtn" title="Clear conversation history">
+            <i data-lucide="trash-2" style="width:14px; height:14px;"></i> Clear
+          </button>
+          <button class="assistant-close-btn" id="closeAssistantBtn" aria-label="Close Assistant">
+            <i data-lucide="x" style="width:18px; height:18px;"></i>
           </button>
         </div>
+      </div>
+
+      <!-- Quick Suggestion Prompt Chips -->
+      <div class="assistant-chips-row" id="assistantChipsRow">
+        <button class="assistant-chip" data-prompt="Brainstorm unique AI project ideas for our final year">💡 AI Ideas</button>
+        <button class="assistant-chip" data-prompt="Suggest the best modern tech stack for a college collaboration platform">🛠️ Tech Stack</button>
+        <button class="assistant-chip" data-prompt="How do I structure team roles for a 4-person software project?">👥 Team Roles</button>
+        <button class="assistant-chip" data-prompt="Give me 5 presentation tips for college project viva review">🎓 Viva Prep</button>
+      </div>
+
+      <!-- Chat Messages Container -->
+      <div class="chatbot-messages assistant-messages" id="chatMessages">
+        <div class="chat-msg bot">
+          👋 Hi! I'm your <strong>ProjectConnect AI Assistant</strong> powered by Google Gemini.<br><br>
+          Ask me anything — brainstorm project ideas, recommend tech stacks, get team advice, or prepare for project presentations!
+        </div>
+      </div>
+
+      <!-- Typing Indicator -->
+      <div id="chatTypingIndicator" class="chat-typing assistant-typing" style="display:none;">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span style="font-size:11px; color:#94a3b8; margin-left:6px;">Gemini is thinking...</span>
+      </div>
+
+      <!-- Input Bar -->
+      <div class="assistant-input-container">
+        <div class="chatbot-input-row assistant-input-row">
+          <textarea id="chatInput" class="chatbot-input assistant-input" rows="1" placeholder="Ask Gemini anything about your project..."></textarea>
+          <button class="chatbot-send assistant-send-btn" id="chatSend" title="Send message (Enter)">
+            <i data-lucide="send" style="width:15px;height:15px;"></i>
+          </button>
+        </div>
+        <div class="assistant-input-hint">Press <strong>Enter</strong> to send, <strong>Shift + Enter</strong> for new line</div>
       </div>
     </aside>
 
@@ -243,22 +314,77 @@
             </div>
           </div>
         </section>
-        <!-- PAGE: NOTIFICATIONS -->
-        <div id="page-notifications" class="page-view">
-          <section class="card">
-            <div class="card-inner">
-              <div class="section-header">
-                <h2 class="section-title">Notifications</h2>
-                <button class="pill-mini" id="clearNotifsPage"
-                  style="border:1px solid rgba(55,65,81,0.5); cursor:pointer;">Clear All</button>
-              </div>
-              <div class="notif-list" id="notifListPage">
-                <!-- Items injected by JS -->
-                <div class="notif-empty">No new notifications</div>
+
+        <!-- About Section (Bottom of Page) -->
+        <section class="card animate-on-scroll" id="aboutSection">
+          <div class="card-inner">
+            <div class="section-header">
+              <div>
+                <div class="hero-eyebrow" style="margin-bottom: 8px;">
+                  <span class="hero-eyebrow-dot"></span>
+                  Built for College Students
+                </div>
+                <h2 class="section-title">About ProjectConnect</h2>
               </div>
             </div>
-          </section>
-        </div>
+            
+            <div class="about-content-wrapper">
+              <p class="about-lead">
+                <strong style="color: #38bdf8;">ProjectConnect</strong> is an exclusive platform designed to bridge the gap between students, innovative ideas, and successful team execution in the academic landscape. Our mission is to eliminate the cycle of repetitive, plagiarized college projects and foster a culture of genuine innovation and cross-disciplinary collaboration.
+              </p>
+              
+              <div class="about-features-grid">
+                <div class="about-feature-card">
+                  <div class="about-feature-header" style="color: #38bdf8;">
+                    <i data-lucide="lightbulb" class="about-feature-icon"></i>
+                    <strong>Idea Discovery</strong>
+                  </div>
+                  <p>Explore unique, domain-specific project ideas pitched by peers. Stop recycling old projects and start building something that matters.</p>
+                </div>
+                
+                <div class="about-feature-card">
+                  <div class="about-feature-header" style="color: #a855f7;">
+                    <i data-lucide="users" class="about-feature-icon"></i>
+                    <strong>Smart Team Formation</strong>
+                  </div>
+                  <p>Find teammates with the exact complementary skills you need. Post openings and recruit across different departments and years.</p>
+                </div>
+
+                <div class="about-feature-card">
+                  <div class="about-feature-header" style="color: #22c55e;">
+                    <i data-lucide="layout-dashboard" class="about-feature-icon"></i>
+                    <strong>Unified Workspace</strong>
+                  </div>
+                  <p>Collaborate in real-time with integrated group chats, virtual video meetings, and task tracking—all without leaving the platform.</p>
+                </div>
+              </div>
+
+              <div class="about-story-box">
+                <h3 style="font-size: 14px; font-weight: 600; color: #e5e7eb; margin-bottom: 8px;">Why We Built This</h3>
+                <p style="color: var(--muted); line-height: 1.7;">
+                  We believe every student deserves a team that matches their energy. Too often, great ideas are lost because students don't know who has the right coding, design, or research skills in their college. ProjectConnect was built by students, for students, to make finding a co-founder for your final-year or mini-project as easy as sending a text.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- PAGE: NOTIFICATIONS -->
+      <div id="page-notifications" class="page-view">
+        <section class="card">
+          <div class="card-inner">
+            <div class="section-header">
+              <h2 class="section-title">Notifications</h2>
+              <button class="pill-mini" id="clearNotifsPage"
+                style="border:1px solid rgba(55,65,81,0.5); cursor:pointer;">Clear All</button>
+            </div>
+            <div class="notif-list" id="notifListPage">
+              <!-- Items injected by JS -->
+              <div class="notif-empty">No new notifications</div>
+            </div>
+          </div>
+        </section>
       </div>
 
       <!-- PAGE: COLLABORATION -->
@@ -280,7 +406,7 @@
 
             <div class="team-layout">
               <!-- Sidebar: Members -->
-              <div class="team-sidebar">
+              <div class="team-sidebar" id="teamSidebarMembers">
                 <div class="section-label">Team Members</div>
                 <div class="member-item">
                   <div class="member-avatar" style="background:#38bdf8">U</div>
@@ -443,62 +569,6 @@
           </div>
         </section>
       </div>
-
-      <!-- PAGE: ABOUT -->
-      <div id="page-about" class="page-view">
-        <section class="card" id="aboutSection">
-          <div class="card-inner">
-            <div class="section-header">
-              <h2 class="section-title">About ProjectConnect</h2>
-            </div>
-            
-            <div style="font-size:13px; line-height:1.7; color:var(--text); display: flex; flex-direction: column; gap: 16px;">
-              <p>
-                <strong style="color: #38bdf8;">ProjectConnect</strong> is an exclusive platform designed to bridge the gap between students, innovative ideas, and successful team execution in the academic landscape. Our mission is to eliminate the cycle of repetitive, plagiarized college projects and foster a culture of genuine innovation and cross-disciplinary collaboration.
-              </p>
-              
-              <div>
-                <h3 style="font-size:14px; font-weight:600; color:#e5e7eb; margin-bottom: 8px;">Our Core Features</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-                  <div style="background: rgba(15, 23, 42, 0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(55, 65, 81, 0.5);">
-                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: #38bdf8;">
-                      <i data-lucide="lightbulb" style="width:16px; height:16px;"></i>
-                      <strong>Idea Discovery</strong>
-                    </div>
-                    <p style="font-size: 12px; color: var(--muted);">Explore unique, domain-specific project ideas pitched by peers. Stop recycling old projects and start building something that matters.</p>
-                  </div>
-                  
-                  <div style="background: rgba(15, 23, 42, 0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(55, 65, 81, 0.5);">
-                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: #a855f7;">
-                      <i data-lucide="users" style="width:16px; height:16px;"></i>
-                      <strong>Smart Team Formation</strong>
-                    </div>
-                    <p style="font-size: 12px; color: var(--muted);">Find teammates with the exact complementary skills you need. Post openings and recruit across different departments and years.</p>
-                  </div>
-
-                  <div style="background: rgba(15, 23, 42, 0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(55, 65, 81, 0.5);">
-                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: #22c55e;">
-                      <i data-lucide="layout-dashboard" style="width:16px; height:16px;"></i>
-                      <strong>Unified Workspace</strong>
-                    </div>
-                    <p style="font-size: 12px; color: var(--muted);">Collaborate in real-time with integrated group chats, virtual video meetings, and task tracking—all without leaving the platform.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 style="font-size:14px; font-weight:600; color:#e5e7eb; margin-bottom: 8px;">Why We Built This</h3>
-                <p style="color: var(--muted);">
-                  We believe every student deserves a team that matches their energy. Too often, great ideas are lost because students don't know who has the right coding, design, or research skills in their college. ProjectConnect was built by students, for students, to make finding a co-founder for your final-year or mini-project as easy as sending a text.
-                </p>
-              </div>
-            </div>
-            
-          </div>
-        </section>
-      </div>
-
-
 
     </main>
 
@@ -716,11 +786,11 @@
           <span class="badge-soft" id="requestProjectTitle" style="font-size:11px;">Project Name</span>
         </div>
         <label class="modal-field-label">Why are you a good fit?</label>
-        <textarea class="modal-input" style="min-height:60px;" placeholder="I have experience with..."
+        <textarea class="modal-input" id="requestPitchInput" style="min-height:60px;" placeholder="I have experience with..."
           required></textarea>
 
         <label class="modal-field-label">Portfolio / Github Link</label>
-        <input type="url" class="modal-input" placeholder="https://..." />
+        <input type="url" class="modal-input" id="requestGithubInput" placeholder="https://github.com/..." required />
 
         <button type="submit" class="modal-submit">Send Request</button>
       </form>

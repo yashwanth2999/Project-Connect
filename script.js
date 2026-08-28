@@ -1,5 +1,14 @@
-const backendHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'localhost' : window.location.hostname;
-const BASE_URL = `http://${backendHost}:5001/api`;
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+// In local dev with separate frontend server (e.g. port 3000), route to backend port 5001.
+// In production or unified server deployments, seamlessly use origin.
+const BASE_URL = isLocal && (window.location.port === '3000' || !window.location.port)
+    ? `http://${window.location.hostname}:5001/api`
+    : `${window.location.origin}/api`;
+
+const SOCKET_URL = isLocal && (window.location.port === '3000' || !window.location.port)
+    ? `http://${window.location.hostname}:5001`
+    : `${window.location.origin}`;
+
 let currentUser = JSON.parse(localStorage.getItem('user')) || null;
 let authToken = localStorage.getItem('token') || null;
 
@@ -7,10 +16,13 @@ let authToken = localStorage.getItem('token') || null;
 const demoProjects = {
     ai: [
         {
+            _id: "demo-ai-1",
             title: "AI‑based Project Idea Recommender",
             type: "Final‑year • Cross‑college",
             status: "Open",
-            needed: "2 teammates",
+            teamSize: 2,
+            acceptedMembers: 0,
+            needed: "Teammates Required: 2",
             skills: ["Python", "Scikit‑learn", "FastAPI"],
             owner: "3rd year • CSE",
             tags: ["AI", "Recommendation"],
@@ -26,6 +38,15 @@ const tabButtons = document.querySelectorAll(".tab-btn");
 
 // Global router first so we can use it
 function navigateTo(pageId) {
+    if (pageId === 'about') {
+        navigateTo('home');
+        setTimeout(() => {
+            const aboutSec = document.getElementById('aboutSection');
+            if (aboutSec) aboutSec.scrollIntoView({ behavior: 'smooth' });
+        }, 120);
+        return;
+    }
+
     // Hide all pages
     document.querySelectorAll('.page-view').forEach(page => {
         page.classList.remove('active');
@@ -72,22 +93,29 @@ async function renderProjects(domain) {
         const badgeRow = document.createElement("div");
         badgeRow.className = "project-badge-row";
 
+        // Calculate total needed, accepted, and remaining vacancies
+        const totalNeeded = typeof p.teamSize === 'number'
+            ? p.teamSize
+            : (parseInt(p.needed && p.needed.replace(/[^0-9]/g, '')) || 2);
+        const accepted = typeof p.acceptedMembers === 'number' ? p.acceptedMembers : 0;
+        const remaining = Math.max(0, totalNeeded - accepted);
+        const isFull = remaining === 0;
+
+        const projectType = p.type || (p.collegeOnly ? "College‑only Project" : "Final‑year • Team Project");
+
         const leftPill = document.createElement("div");
         leftPill.className = "pill-mini";
         const dot = document.createElement("span");
-        dot.className =
-            "dot " +
-            (p.status === "Open"
-                ? ""
-                : p.status === "Waitlist"
-                    ? "dot-waiting"
-                    : "dot-closed");
+        dot.className = "dot " + (isFull ? "dot-closed" : "");
         leftPill.appendChild(dot);
-        leftPill.appendChild(document.createTextNode(p.type));
+        leftPill.appendChild(document.createTextNode(projectType));
 
+        // Format as "Teammates Required: <remaining>" or "Teammates Required: 0 (Team full)"
         const rightPill = document.createElement("div");
-        rightPill.className = "pill-mini";
-        rightPill.textContent = p.status === "Open" ? p.needed : p.status;
+        rightPill.className = "pill-mini" + (isFull ? " team-full-pill" : " teammates-pill");
+        rightPill.textContent = isFull
+            ? "Teammates Required: 0 (Team full)"
+            : `Teammates Required: ${remaining}`;
 
         badgeRow.appendChild(leftPill);
         badgeRow.appendChild(rightPill);
@@ -101,7 +129,7 @@ async function renderProjects(domain) {
         const skillsLabel = document.createElement("span");
         skillsLabel.textContent = "Required skills:";
         meta.appendChild(skillsLabel);
-        p.skills.forEach((s) => {
+        (p.skills || []).forEach((s) => {
             const chip = document.createElement("span");
             chip.className = "skill-chip";
             chip.textContent = s;
@@ -134,15 +162,16 @@ async function renderProjects(domain) {
         const joinBtn = document.createElement("button");
         joinBtn.className = "project-btn";
         joinBtn.type = "button";
-        joinBtn.innerHTML = `<span>Request to join</span> <i data-lucide="handshake" style="width:14px; height:14px;"></i>`;
-        if (p.status === "Closed") {
+        if (isFull) {
             joinBtn.disabled = true;
-            joinBtn.style.opacity = "0.6";
+            joinBtn.style.opacity = "0.5";
             joinBtn.style.cursor = "not-allowed";
-            joinBtn.textContent = "Team full";
+            joinBtn.innerHTML = `<span>Team full</span> <i data-lucide="lock" style="width:14px; height:14px;"></i>`;
         } else {
+            joinBtn.innerHTML = `<span>Request to join</span> <i data-lucide="handshake" style="width:14px; height:14px;"></i>`;
             joinBtn.addEventListener("click", () => {
-                openRequestModal(p.title);
+                const ownerName = typeof p.author === 'object' && p.author ? p.author.fullName : (p.owner || "Project Owner");
+                openRequestModal(p._id || p.title, p.title, ownerName);
             });
         }
 
@@ -196,9 +225,13 @@ const requestModal = document.getElementById("requestModal");
 const requestClose = document.getElementById("requestClose");
 const requestForm = document.getElementById("requestForm");
 const requestProjectTitle = document.getElementById("requestProjectTitle");
+let currentRequestProjectId = null;
+let currentRequestProjectOwner = null;
 
-function openRequestModal(projectTitle) {
+function openRequestModal(projectId, projectTitle, ownerName) {
     if (!requestModal) return;
+    currentRequestProjectId = projectId;
+    currentRequestProjectOwner = ownerName || "Project Owner";
     requestProjectTitle.textContent = projectTitle;
     requestModal.classList.remove("hidden");
     requestModal.classList.add("open");
@@ -210,33 +243,198 @@ function closeRequestModal() {
     requestModal.classList.add("hidden");
 }
 
+function setupTeamGroup(projectTitle, ownerName, teammateName, teammateGithub) {
+    const teamTitleEl = document.getElementById("teamRoomTitle");
+    if (teamTitleEl) {
+        teamTitleEl.textContent = projectTitle || "AI Project Workspace";
+    }
+
+    // Populate Team Members Sidebar
+    const sidebar = document.getElementById("teamSidebarMembers");
+    if (sidebar) {
+        const ownerInitials = (ownerName || "Owner").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "TL";
+        const teammateInitials = (teammateName || "Teammate").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "TM";
+
+        sidebar.innerHTML = `
+            <div class="section-label">Team Members (2)</div>
+            <div class="member-item">
+                <div class="member-avatar" style="background:#38bdf8">${ownerInitials}</div>
+                <div class="member-info">
+                    <div class="member-name">${ownerName || "Project Lead"}</div>
+                    <div class="member-role" style="color:#38bdf8; font-weight:600;">👑 Project Owner</div>
+                </div>
+            </div>
+            <div class="member-item">
+                <div class="member-avatar" style="background:#22c55e">${teammateInitials}</div>
+                <div class="member-info">
+                    <div class="member-name">${teammateName || "Accepted Teammate"}</div>
+                    <div class="member-role" style="color:#4ade80;">🚀 Teammate</div>
+                    ${teammateGithub ? `
+                        <a href="${teammateGithub}" target="_blank" rel="noopener noreferrer" class="member-github-link">
+                            <i data-lucide="github" style="width:11px; height:11px;"></i> View GitHub
+                        </a>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    // Announce group creation in Team Chat
+    if (teamChatMessages) {
+        const divider = document.createElement("div");
+        divider.className = "date-divider";
+        divider.textContent = `Group Workspace Created • ${projectTitle}`;
+        teamChatMessages.appendChild(divider);
+
+        const announcement = document.createElement("div");
+        announcement.className = "team-system-announcement";
+        announcement.innerHTML = `
+            <div class="system-announcement-card">
+                <div class="system-announcement-header">
+                    <i data-lucide="party-popper" style="width:16px;height:16px;color:#38bdf8;"></i>
+                    <strong>Team Formed Successfully!</strong>
+                </div>
+                <p><strong>${ownerName || "Project Owner"}</strong> accepted <strong>${teammateName || "Applicant"}</strong> into the project <em>${projectTitle}</em>.</p>
+                ${teammateGithub ? `
+                    <div class="announcement-github">
+                        <i data-lucide="github" style="width:13px;height:13px;"></i>
+                        <span>Teammate GitHub:</span>
+                        <a href="${teammateGithub}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8; text-decoration:underline;">${teammateGithub}</a>
+                    </div>
+                ` : ''}
+                <div class="announcement-hint">A dedicated group workspace is ready. You can brainstorm in real time, coordinate milestones, or click "Join Virtual Meeting" to start a call.</div>
+            </div>
+        `;
+        teamChatMessages.appendChild(announcement);
+        teamChatMessages.scrollTop = teamChatMessages.scrollHeight;
+    }
+
+    // Switch Socket room
+    const newRoomId = 'project-' + (projectTitle || 'workspace').toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
+    currentRoomId = newRoomId;
+    if (typeof socket !== 'undefined' && socket && socket.connected) {
+        socket.emit('join-room', currentRoomId);
+    }
+
+    // Direct to Collaboration Window
+    navigateTo("collaboration");
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+async function acceptProjectTeammate(projectId, projectTitle, notifIndex) {
+    let remainingVacancies = null;
+
+    // 1. Call backend endpoint if valid DB id
+    if (projectId && !projectId.toString().startsWith('demo-')) {
+        try {
+            const res = await fetch(`${BASE_URL}/projects/${projectId}/accept`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                remainingVacancies = data.remainingVacancies;
+            }
+        } catch (e) {
+            console.warn("Could not sync accept with backend:", e);
+        }
+    }
+
+    // 2. Also update matching demo project in memory
+    for (const domain in demoProjects) {
+        const found = demoProjects[domain].find(p => p._id === projectId || p.title === projectTitle);
+        if (found) {
+            found.acceptedMembers = (found.acceptedMembers || 0) + 1;
+            const total = found.teamSize || 2;
+            remainingVacancies = Math.max(0, total - found.acceptedMembers);
+            found.needed = remainingVacancies === 0 ? "Teammates Required: 0 (Team full)" : `Teammates Required: ${remainingVacancies}`;
+        }
+    }
+
+    // 3. Update notification state
+    if (typeof notifIndex === 'number' && mockNotifs[notifIndex]) {
+        mockNotifs[notifIndex].status = "accepted";
+        renderNotifications();
+    } else {
+        const notif = mockNotifs.find(n => (n.projectId === projectId || n.projectTitle === projectTitle) && (n.actionType === "accept_request" || n.type === "join_request"));
+        if (notif) {
+            notif.status = "accepted";
+            renderNotifications();
+        }
+    }
+
+    // 4. Re-render active domain projects so cards reflect only remaining vacancies immediately!
+    const activeTab = document.querySelector(".tab-btn.active");
+    const currentDomain = activeTab ? activeTab.getAttribute("data-domain") : "ai";
+    await renderProjects(currentDomain);
+
+    return remainingVacancies;
+}
+
 if (requestClose) requestClose.addEventListener("click", closeRequestModal);
 
 if (requestForm) {
     requestForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const roomTitle = requestProjectTitle.textContent;
+        const projectId = currentRequestProjectId;
+        const ownerName = currentRequestProjectOwner || "Project Owner";
+
+        const pitchInput = document.getElementById("requestPitchInput");
+        const githubInput = document.getElementById("requestGithubInput");
+        const pitch = pitchInput ? pitchInput.value.trim() : "";
+        const github = githubInput ? githubInput.value.trim() : "";
+
         closeRequestModal();
         showToast("Request sent to project owner!");
 
-        // Trigger Notification for the User (Simulation)
-        // In a real app, this would go to the owner. Here we show it to the current user for demo purposes.
+        const applicantName = currentUser ? currentUser.fullName : "Student Applicant";
+        const applicantEmail = currentUser ? currentUser.email : "applicant@college.edu";
+        const applicantGithub = github || "https://github.com/student-applicant";
+
+        // Send join-request to backend if valid DB id
+        if (projectId && !projectId.toString().startsWith('demo-')) {
+            fetch(`${BASE_URL}/projects/${projectId}/join-request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pitch, githubLink: applicantGithub, applicantName })
+            }).catch(err => console.warn('Could not register join request:', err));
+        }
+
+        // Add Notification for the Project Owner with [Accept] & [Reject] actions and submitted GitHub link
         const newNotif = {
-            text: `Join Request sent for '${roomTitle}'`,
+            id: Date.now(),
+            type: "join_request",
+            projectId: projectId,
+            projectTitle: roomTitle,
+            ownerName: ownerName,
+            applicantName: applicantName,
+            applicantEmail: applicantEmail,
+            githubLink: applicantGithub,
+            pitch: pitch || "I have relevant experience and would like to join this project team!",
+            text: `${applicantName} requested to join '${roomTitle}'`,
             unread: true,
             time: "Just now",
-            actionLabel: "View Details",
-            actionType: "view_request_details"
+            status: "pending"
         };
         mockNotifs.unshift(newNotif);
         renderNotifications();
 
-        // Simulate Request Approval after 2 seconds
-        setTimeout(() => {
-            showToast(`Request for '${roomTitle}' approved!`);
-            setTimeout(() => {
-                navigateTo("collaboration");
-            }, 1000);
+        // Simulate Project Owner Accepting Request after 3s if not already handled
+        setTimeout(async () => {
+            const notif = mockNotifs.find(n => n.id === newNotif.id);
+            if (notif && notif.status === "pending") {
+                await acceptProjectTeammate(projectId, roomTitle);
+                notif.status = "accepted";
+                renderNotifications();
+                showToast(`Project owner accepted your request for '${roomTitle}'! Redirecting to group workspace...`);
+                setTimeout(() => {
+                    setupTeamGroup(roomTitle, ownerName, applicantName, applicantGithub);
+                }, 1000);
+            }
         }, 3000);
 
         requestForm.reset();
@@ -297,7 +495,9 @@ if (projectForm) {
                 title: payload.title,
                 type: "Demo • Cross-college",
                 status: "Open",
-                needed: payload.teamSize + " teammates",
+                teamSize: parseInt(payload.teamSize) || 2,
+                acceptedMembers: 0,
+                needed: `Teammates Required: ${payload.teamSize}`,
                 skills: payload.skills.split(',').map(s => s.trim()).filter(Boolean),
                 owner: currentUser ? currentUser.fullName : "Demo User",
                 tags: [payload.domain.toUpperCase(), "Demo"]
@@ -345,10 +545,6 @@ document.getElementById("openPost").addEventListener("click", () => {
 
 
 
-document.getElementById("openAbout").addEventListener("click", () => {
-    navigateTo("about");
-});
-
 document.getElementById("openHome").addEventListener("click", () => {
     navigateTo("home");
 });
@@ -382,17 +578,75 @@ function renderNotifications() {
     let hasUnread = false;
     mockNotifs.forEach((n, index) => {
         const item = document.createElement("div");
-        item.className = `notif-item ${n.unread ? 'unread' : ''}`;
-        item.innerHTML = `
-            <div style="display:flex; align-items:flex-start; gap:10px; width:100%;">
-                <span class="icon" style="font-size:12px; margin-top:4px;">${n.unread ? '<i data-lucide="circle-dot" style="width:12px; height:12px; color:#3b82f6;"></i>' : '<i data-lucide="circle" style="width:12px; height:12px;"></i>'}</span>
-                <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
-                    <span style="font-size:13px; color:var(--text);">${n.text}</span>
-                    <span style="font-size:10px; color:var(--muted);">${n.time}</span>
+
+        if (n.type === "join_request" || n.githubLink) {
+            // Specialized Join Request Notification Card for Project Owner
+            item.className = `notif-item notif-request-card ${n.unread ? 'unread' : ''}`;
+            item.innerHTML = `
+                <div class="notif-request-main">
+                    <div class="notif-request-header">
+                        <span class="icon" style="margin-top:2px;">
+                            ${n.unread ? '<i data-lucide="bell-ring" style="width:15px; height:15px; color:#38bdf8;"></i>' : '<i data-lucide="bell" style="width:15px; height:15px;"></i>'}
+                        </span>
+                        <div style="flex:1;">
+                            <div class="notif-title-row">
+                                <strong style="color:#f8fafc; font-size:13px;">${n.applicantName || "Student"}</strong>
+                                <span style="font-size:11px; color:#38bdf8; background:rgba(56,189,248,0.1); padding:2px 8px; border-radius:12px; border:1px solid rgba(56,189,248,0.25);">
+                                    Join Request • Applied to: <strong>${n.projectTitle}</strong>
+                                </span>
+                            </div>
+                            ${n.pitch ? `<div class="notif-pitch-text">"${n.pitch}"</div>` : ''}
+                            ${n.githubLink ? `
+                                <div>
+                                    <a href="${n.githubLink}" target="_blank" rel="noopener noreferrer" class="notif-github-link" title="Open GitHub Profile">
+                                        <i data-lucide="github" style="width:13px; height:13px;"></i>
+                                        <span>${n.githubLink}</span>
+                                        <i data-lucide="external-link" style="width:11px; height:11px; opacity:0.7;"></i>
+                                    </a>
+                                </div>
+                            ` : ''}
+                            <div style="font-size:10px; color:var(--muted); margin-top:6px;">${n.time}</div>
+                        </div>
+                    </div>
+
+                    <div class="notif-actions-row">
+                        ${n.status === 'pending' ? `
+                            <button class="notif-action-btn notif-accept-btn" data-action="accept_request" data-index="${index}">
+                                <i data-lucide="check" style="width:13px; height:13px;"></i> Accept
+                            </button>
+                            <button class="notif-action-btn notif-reject-btn" data-action="reject_request" data-index="${index}">
+                                <i data-lucide="x" style="width:13px; height:13px;"></i> Reject
+                            </button>
+                        ` : n.status === 'accepted' ? `
+                            <span class="notif-badge-accepted">
+                                <i data-lucide="check-circle" style="width:13px; height:13px;"></i> Accepted (Teammate Added)
+                            </span>
+                            <button class="notif-action-btn notif-group-btn" data-action="view_group" data-index="${index}">
+                                <i data-lucide="users" style="width:13px; height:13px;"></i> Open Group
+                            </button>
+                        ` : `
+                            <span class="notif-badge-rejected">
+                                <i data-lucide="x-circle" style="width:13px; height:13px;"></i> Rejected
+                            </span>
+                        `}
+                    </div>
                 </div>
-                ${n.actionLabel ? `<button class="notif-action-btn" data-index="${index}">${n.actionLabel}</button>` : ''}
-            </div>
-        `;
+            `;
+        } else {
+            // General notification item
+            item.className = `notif-item ${n.unread ? 'unread' : ''}`;
+            item.innerHTML = `
+                <div style="display:flex; align-items:flex-start; gap:10px; width:100%;">
+                    <span class="icon" style="font-size:12px; margin-top:4px;">${n.unread ? '<i data-lucide="circle-dot" style="width:12px; height:12px; color:#3b82f6;"></i>' : '<i data-lucide="circle" style="width:12px; height:12px;"></i>'}</span>
+                    <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+                        <span style="font-size:13px; color:var(--text);">${n.text}</span>
+                        <span style="font-size:10px; color:var(--muted);">${n.time}</span>
+                    </div>
+                    ${n.actionLabel ? `<button class="notif-action-btn ${n.status === 'accepted' ? 'accepted' : ''}" data-action="${n.actionType || ''}" data-index="${index}">${n.actionLabel}</button>` : ''}
+                </div>
+            `;
+        }
+
         notifListPage.appendChild(item);
         if (n.unread) hasUnread = true;
     });
@@ -401,18 +655,63 @@ function renderNotifications() {
         if (hasUnread) notifBadge.classList.add("active");
         else notifBadge.classList.remove("active");
     }
+
+    if (window.lucide) lucide.createIcons();
 }
 
 // Handle Notification Actions
 if (notifListPage) {
-    notifListPage.addEventListener("click", (e) => {
+    notifListPage.addEventListener("click", async (e) => {
         const btn = e.target.closest(".notif-action-btn");
         if (!btn) return;
 
         const index = btn.getAttribute("data-index");
+        const action = btn.getAttribute("data-action");
         const notif = mockNotifs[index];
+        if (!notif) return;
 
-        if (notif.actionType === "chat") {
+        if (action === "accept_request" || notif.actionType === "accept_request") {
+            if (notif.status === "accepted") {
+                showToast("This request has already been accepted.");
+                return;
+            }
+
+            // 1. Mark accepted
+            notif.status = "accepted";
+            notif.unread = false;
+
+            // 2. Decrement remaining vacancies on project
+            await acceptProjectTeammate(notif.projectId, notif.projectTitle);
+
+            // 3. Re-render notification state
+            renderNotifications();
+
+            // 4. Directly direct to Collaboration window and create team group!
+            setupTeamGroup(
+                notif.projectTitle,
+                notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                notif.applicantName || "Accepted Teammate",
+                notif.githubLink || ""
+            );
+
+            showToast(`Teammate accepted! Directed to collaboration workspace group.`);
+
+        } else if (action === "reject_request") {
+            notif.status = "rejected";
+            notif.unread = false;
+            renderNotifications();
+            showToast(`Join request for '${notif.projectTitle}' from ${notif.applicantName || 'user'} was rejected.`);
+
+        } else if (action === "view_group") {
+            setupTeamGroup(
+                notif.projectTitle,
+                notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                notif.applicantName || "Accepted Teammate",
+                notif.githubLink || ""
+            );
+            showToast(`Opening team group for '${notif.projectTitle}'...`);
+
+        } else if (notif.actionType === "chat") {
             navigateTo("collaboration");
             showToast(`Replying to ${notif.text.split(' ')[0]}...`);
         } else if (notif.actionType === "view_project") {
@@ -500,6 +799,7 @@ if (loginFormModal) {
                 currentUser = data.user;
                 localStorage.setItem('token', authToken);
                 localStorage.setItem('user', JSON.stringify(currentUser));
+                updateUserProfileUI();
 
                 document.querySelector(".app-shell").classList.add("visible");
                 closeAuthModal();
@@ -516,6 +816,7 @@ if (loginFormModal) {
             currentUser = { fullName: 'Demo User', email: email };
             localStorage.setItem('token', authToken);
             localStorage.setItem('user', JSON.stringify(currentUser));
+            updateUserProfileUI();
             
             document.querySelector(".app-shell").classList.add("visible");
             closeAuthModal();
@@ -907,6 +1208,7 @@ if (signupForm) {
                 currentUser = data.user;
                 localStorage.setItem('token', authToken);
                 localStorage.setItem('user', JSON.stringify(currentUser));
+                updateUserProfileUI();
 
                 document.querySelector(".app-shell").classList.add("visible");
                 closeAuthModal();
@@ -923,6 +1225,7 @@ if (signupForm) {
             currentUser = { fullName: fullName, email: email };
             localStorage.setItem('token', authToken);
             localStorage.setItem('user', JSON.stringify(currentUser));
+            updateUserProfileUI();
             
             document.querySelector(".app-shell").classList.add("visible");
             closeAuthModal();
@@ -933,40 +1236,341 @@ if (signupForm) {
     });
 }
 
-// Dashboard open/close
-const dashboardToggle = document.getElementById("dashboardToggle");
-const dashboardPanel = document.getElementById("dashboardPanel");
-const dashboardClose = document.getElementById("dashboardClose");
+// ── USER PROFILE SECTION & DROPDOWN ─────────────────────────────────────
+const profileSection       = document.getElementById("profileSection");
+const profileTriggerBtn    = document.getElementById("profileTriggerBtn");
+const profileDropdown      = document.getElementById("profileDropdown");
+const profileLogoutBtn     = document.getElementById("profileLogoutBtn");
+const profileGoHome        = document.getElementById("profileGoHome");
+const profileGoCollab      = document.getElementById("profileGoCollab");
+const profileGoPost        = document.getElementById("profileGoPost");
+const profileGoNotifs      = document.getElementById("profileGoNotifs");
+const dropdownAvatarWrap   = document.getElementById("dropdownAvatarWrap");
+const uploadPicBtn         = document.getElementById("uploadPicBtn");
+const removePicBtn         = document.getElementById("removePicBtn");
+const profilePicInput      = document.getElementById("profilePicInput");
+const uploadPicLabel       = document.getElementById("uploadPicLabel");
 
-if (dashboardToggle) {
-    dashboardToggle.addEventListener("click", () => {
-        dashboardPanel.classList.toggle("open");
+function updateUserProfileUI() {
+    const navAvatar   = document.getElementById("navProfileAvatar");
+    const navName     = document.getElementById("navProfileName");
+    const dropAvatar  = document.getElementById("dropdownProfileAvatar");
+    const dropName    = document.getElementById("dropdownProfileName");
+    const dropEmail   = document.getElementById("dropdownProfileEmail");
+    const uploadLabel = document.getElementById("uploadPicLabel");
+    const removeBtn   = document.getElementById("removePicBtn");
+
+    if (currentUser) {
+        const initials = (currentUser.fullName || "User")
+            .split(" ")
+            .filter(Boolean)
+            .map(n => n[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase() || "U";
+
+        const firstName = (currentUser.fullName || "Student").split(" ")[0];
+        if (navName) navName.textContent = firstName;
+        if (dropName) dropName.textContent = currentUser.fullName || "Student";
+        if (dropEmail) dropEmail.textContent = currentUser.email || "";
+
+        // Render Profile Picture or fallback to Initials
+        if (currentUser.profilePic) {
+            if (navAvatar) {
+                navAvatar.innerHTML = `<img src="${currentUser.profilePic}" class="profile-avatar-img" alt="Profile" />`;
+            }
+            if (dropAvatar) {
+                dropAvatar.innerHTML = `<img src="${currentUser.profilePic}" class="profile-avatar-img" alt="Profile" />`;
+            }
+            if (uploadLabel) uploadLabel.textContent = "Change Photo";
+            if (removeBtn) removeBtn.style.display = "inline-flex";
+        } else {
+            if (navAvatar) navAvatar.textContent = initials;
+            if (dropAvatar) dropAvatar.textContent = initials;
+            if (uploadLabel) uploadLabel.textContent = "Add Photo";
+            if (removeBtn) removeBtn.style.display = "none";
+        }
+    } else {
+        if (navAvatar) navAvatar.textContent = "G";
+        if (navName) navName.textContent = "Guest";
+        if (dropAvatar) dropAvatar.textContent = "G";
+        if (dropName) dropName.textContent = "Guest Student";
+        if (dropEmail) dropEmail.textContent = "Not logged in";
+        if (uploadLabel) uploadLabel.textContent = "Add Photo";
+        if (removeBtn) removeBtn.style.display = "none";
+    }
+}
+
+// Compress / resize image using offscreen canvas to optimize storage
+function processProfileImage(file) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) {
+            return reject(new Error('Please select a valid image file.'));
+        }
+        if (file.size > 8 * 1024 * 1024) {
+            return reject(new Error('Image size should be under 8MB.'));
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const maxSize = 240;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > maxSize) {
+                        height = Math.round((height * maxSize) / width);
+                        width = maxSize;
+                    }
+                } else {
+                    if (height > maxSize) {
+                        width = Math.round((width * maxSize) / height);
+                        height = maxSize;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                resolve(dataUrl);
+            };
+            img.onerror = () => reject(new Error('Failed to decode image.'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('Failed to read file.'));
+        reader.readAsDataURL(file);
     });
 }
 
-if (dashboardClose) {
-    dashboardClose.addEventListener("click", () => {
-        dashboardPanel.classList.remove("open");
+// Trigger file picker
+if (uploadPicBtn) {
+    uploadPicBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (profilePicInput) profilePicInput.click();
+    });
+}
+if (dropdownAvatarWrap) {
+    dropdownAvatarWrap.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (profilePicInput) profilePicInput.click();
     });
 }
 
-// Dashboard buttons
-if (dashboardPanel) {
-    dashboardPanel.addEventListener("click", (e) => {
-        const btn = e.target.closest(".dashboard-btn");
-        if (!btn) return;
-        const target = btn.getAttribute("data-target");
+// Handle image selected
+if (profilePicInput) {
+    profilePicInput.addEventListener("change", async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
 
-        // Close dashboard on selection
-        dashboardPanel.classList.remove("open");
+        try {
+            showToast("Processing profile photo...");
+            const dataUrl = await processProfileImage(file);
 
-        if (target === "home") {
-            navigateTo("home");
-        } else if (target === "collaboration") {
-            navigateTo("collaboration");
-        } else if (target === "chatbot") {
-            dashboardPanel.classList.add("open"); // Re-open if they clicked chatbot
-            document.getElementById("chatInput").focus();
+            if (!currentUser) {
+                currentUser = { fullName: "Student", email: "student@college.edu" };
+            }
+            currentUser.profilePic = dataUrl;
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            updateUserProfileUI();
+            if (window.lucide) lucide.createIcons();
+
+            // Sync with backend if logged in
+            if (authToken) {
+                fetch(`${BASE_URL}/auth/profile-picture`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ profilePic: dataUrl })
+                }).catch(err => console.warn('Could not sync profile pic to backend:', err));
+            }
+
+            showToast("Profile picture updated!");
+        } catch (err) {
+            console.error('Profile pic error:', err);
+            showToast(err.message || "Failed to update profile picture");
+        } finally {
+            profilePicInput.value = "";
+        }
+    });
+}
+
+// Remove profile picture
+if (removePicBtn) {
+    removePicBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (currentUser) {
+            currentUser.profilePic = null;
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            updateUserProfileUI();
+            if (window.lucide) lucide.createIcons();
+
+            if (authToken) {
+                fetch(`${BASE_URL}/auth/profile-picture`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ profilePic: null })
+                }).catch(err => console.warn('Could not sync removal to backend:', err));
+            }
+            showToast("Profile picture removed.");
+        }
+    });
+}
+
+function closeProfileDropdown() {
+    if (profileDropdown) profileDropdown.classList.remove("open");
+    if (profileTriggerBtn) {
+        profileTriggerBtn.classList.remove("active");
+        profileTriggerBtn.setAttribute("aria-expanded", "false");
+    }
+}
+
+if (profileTriggerBtn) {
+    profileTriggerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = profileDropdown && profileDropdown.classList.contains("open");
+        if (isOpen) {
+            closeProfileDropdown();
+        } else {
+            if (profileDropdown) profileDropdown.classList.add("open");
+            profileTriggerBtn.classList.add("active");
+            profileTriggerBtn.setAttribute("aria-expanded", "true");
+        }
+    });
+}
+
+// Close dropdown on click outside
+document.addEventListener("click", (e) => {
+    if (profileSection && !profileSection.contains(e.target)) {
+        closeProfileDropdown();
+    }
+});
+
+// Profile Dropdown Quick Links
+if (profileGoHome) {
+    profileGoHome.addEventListener("click", () => {
+        closeProfileDropdown();
+        navigateTo("home");
+    });
+}
+if (profileGoCollab) {
+    profileGoCollab.addEventListener("click", () => {
+        closeProfileDropdown();
+        navigateTo("collaboration");
+    });
+}
+if (profileGoPost) {
+    profileGoPost.addEventListener("click", () => {
+        closeProfileDropdown();
+        navigateTo("post-project");
+    });
+}
+if (profileGoNotifs) {
+    profileGoNotifs.addEventListener("click", () => {
+        closeProfileDropdown();
+        navigateTo("notifications");
+    });
+}
+
+// Log Out Handler
+if (profileLogoutBtn) {
+    profileLogoutBtn.addEventListener("click", () => {
+        closeProfileDropdown();
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        authToken = null;
+        currentUser = null;
+        updateUserProfileUI();
+
+        showToast("Logged out successfully.");
+        document.querySelector(".app-shell").classList.remove("visible");
+        openAuthModal();
+    });
+}
+
+// ── FLOATING AI ASSISTANT FAB & HALF-WINDOW CONTROLLERS ────────────────
+const aiFabBtn           = document.getElementById("aiFabBtn");
+const aiAssistantWindow  = document.getElementById("aiAssistantWindow");
+const assistantBackdrop  = document.getElementById("assistantBackdrop");
+const closeAssistantBtn  = document.getElementById("closeAssistantBtn");
+const clearChatBtn       = document.getElementById("clearChatBtn");
+const assistantChipsRow  = document.getElementById("assistantChipsRow");
+
+function openAssistantWindow() {
+    if (aiAssistantWindow) aiAssistantWindow.classList.add("open");
+    if (assistantBackdrop) assistantBackdrop.classList.add("open");
+    if (chatInput) {
+        setTimeout(() => chatInput.focus(), 300);
+    }
+}
+
+function closeAssistantWindow() {
+    if (aiAssistantWindow) aiAssistantWindow.classList.remove("open");
+    if (assistantBackdrop) assistantBackdrop.classList.remove("open");
+}
+
+if (aiFabBtn) {
+    aiFabBtn.addEventListener("click", () => {
+        const isOpen = aiAssistantWindow && aiAssistantWindow.classList.contains("open");
+        if (isOpen) {
+            closeAssistantWindow();
+        } else {
+            openAssistantWindow();
+        }
+    });
+}
+
+if (closeAssistantBtn) {
+    closeAssistantBtn.addEventListener("click", closeAssistantWindow);
+}
+
+if (assistantBackdrop) {
+    assistantBackdrop.addEventListener("click", closeAssistantWindow);
+}
+
+// Close on Escape key
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+        if (aiAssistantWindow && aiAssistantWindow.classList.contains("open")) {
+            closeAssistantWindow();
+        }
+        closeProfileDropdown();
+    }
+});
+
+// Clear Chat button
+if (clearChatBtn) {
+    clearChatBtn.addEventListener("click", () => {
+        if (chatMessages) {
+            chatMessages.innerHTML = `
+                <div class="chat-msg bot">
+                    👋 Conversation cleared. What else can I help you brainstorm or build?
+                </div>
+            `;
+        }
+        showToast("Chat history cleared.");
+    });
+}
+
+// Quick Suggestion Chips
+if (assistantChipsRow) {
+    assistantChipsRow.addEventListener("click", (e) => {
+        const chip = e.target.closest(".assistant-chip");
+        if (!chip) return;
+        const promptText = chip.getAttribute("data-prompt");
+        if (promptText && chatInput) {
+            chatInput.value = promptText;
+            handleChatSend();
         }
     });
 }
@@ -1082,7 +1686,10 @@ async function handleChatSend() {
 if (chatSend) chatSend.addEventListener("click", handleChatSend);
 if (chatInput) {
     chatInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); handleChatSend(); }
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleChatSend();
+        }
     });
 }
 
@@ -1090,6 +1697,22 @@ if (chatInput) {
 document.addEventListener('DOMContentLoaded', () => {
     const homePage = document.getElementById('page-home');
     if (homePage) homePage.classList.add('active');
+
+    // Auto-restore session from localStorage
+    if (authToken && currentUser) {
+        const shell = document.querySelector(".app-shell");
+        if (shell) shell.classList.add("visible");
+        const authModalEl = document.getElementById("authModal");
+        if (authModalEl) {
+            authModalEl.classList.remove("open");
+            authModalEl.classList.add("hidden");
+        }
+        const authCloseBtn = document.getElementById("authClose");
+        if (authCloseBtn) authCloseBtn.style.display = "block";
+    }
+
+    // Sync profile UI (displays user name / initials or Guest)
+    updateUserProfileUI();
 });
 
 // TEAM ROOM CHAT & SOCKET LOGIC
@@ -1098,8 +1721,8 @@ const teamChatInput = document.getElementById("teamChatInput");
 const teamChatSend = document.getElementById("teamChatSend");
 
 // Connect socket
-const socket = io(`http://${backendHost}:5001`);
-const currentRoomId = 'global-team-room';
+const socket = io(SOCKET_URL);
+let currentRoomId = 'global-team-room';
 
 socket.on('connect', () => {
     socket.emit('join-room', currentRoomId);

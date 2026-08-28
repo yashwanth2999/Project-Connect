@@ -2,9 +2,9 @@
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const isGitHubPages = window.location.hostname.includes('github.io');
 
-// Live cloud backend URL: when deployed on Render/Railway, your Node.js + MongoDB backend lives here!
-// You can also change this anytime from the browser console with: setBackendUrl("https://your-app.onrender.com")
-const DEFAULT_CLOUD_BACKEND = "https://project-connect-api.onrender.com";
+// Live cloud backend URL: points to your live secure Cloudflare tunnel connected to your real backend & database!
+// You can also change this anytime from the browser console with: setBackendUrl("https://your-url.com")
+const DEFAULT_CLOUD_BACKEND = "https://axis-postposted-dude-binding.trycloudflare.com";
 
 let BACKEND_HOST = localStorage.getItem('custom_backend_url') || (
     isLocal && (window.location.port === '3000' || !window.location.port)

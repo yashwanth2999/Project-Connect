@@ -1,13 +1,32 @@
+// ── BACKEND & DATABASE CONNECTION CONFIGURATION ───────────────────────────
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-// In local dev with separate frontend server (e.g. port 3000), route to backend port 5001.
-// In production or unified server deployments, seamlessly use origin.
-const BASE_URL = isLocal && (window.location.port === '3000' || !window.location.port)
-    ? `http://${window.location.hostname}:5001/api`
-    : `${window.location.origin}/api`;
+const isGitHubPages = window.location.hostname.includes('github.io');
 
-const SOCKET_URL = isLocal && (window.location.port === '3000' || !window.location.port)
-    ? `http://${window.location.hostname}:5001`
-    : `${window.location.origin}`;
+// Live cloud backend URL: when deployed on Render/Railway, your Node.js + MongoDB backend lives here!
+// You can also change this anytime from the browser console with: setBackendUrl("https://your-app.onrender.com")
+const DEFAULT_CLOUD_BACKEND = "https://project-connect-api.onrender.com";
+
+let BACKEND_HOST = localStorage.getItem('custom_backend_url') || (
+    isLocal && (window.location.port === '3000' || !window.location.port)
+        ? `http://${window.location.hostname}:5001`
+        : (isGitHubPages ? (localStorage.getItem('custom_backend_url') || DEFAULT_CLOUD_BACKEND) : window.location.origin)
+);
+
+const BASE_URL = `${BACKEND_HOST}/api`;
+const SOCKET_URL = BACKEND_HOST;
+
+// Helper to configure or update the cloud backend URL directly
+window.setBackendUrl = function(url) {
+    if (!url) {
+        localStorage.removeItem('custom_backend_url');
+        console.log('Reset backend URL to default:', DEFAULT_CLOUD_BACKEND);
+    } else {
+        const clean = url.replace(/\/api\/?$/, '').replace(/\/$/, '');
+        localStorage.setItem('custom_backend_url', clean);
+        console.log('Custom backend URL saved:', clean);
+    }
+    location.reload();
+};
 
 let currentUser = JSON.parse(localStorage.getItem('user')) || null;
 let authToken = localStorage.getItem('token') || null;

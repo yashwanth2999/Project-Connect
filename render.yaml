@@ -1,16 +1,16 @@
 services:
   - type: web
     name: project-connect
-    env: node
+    runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && cd backend && npm install && cd ..
     startCommand: npm start
-    autoDeploy: true
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 10000
+        value: 5001
       - key: MONGO_URI
         sync: false
       - key: JWT_SECRET

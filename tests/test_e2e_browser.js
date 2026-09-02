@@ -110,8 +110,11 @@ async function runBrowserTests() {
         const profileAvatarText = await page.$eval('#navProfileAvatar', el => el.textContent.trim());
         assert(profileAvatarText.length > 0, `Profile avatar shows user initials: "${profileAvatarText}"`);
 
-        const profileNameText = await page.$eval('#navProfileName', el => el.textContent.trim());
-        assert(profileNameText.length > 0, `Profile name shows user name: "${profileNameText}"`);
+        const isNavNameHidden = await page.$eval('#navProfileName', el => window.getComputedStyle(el).display === 'none');
+        assert(isNavNameHidden, 'Profile name is hidden in top navigation header for sleek circular avatar design');
+
+        const dropdownNameText = await page.$eval('#dropdownProfileName', el => el.textContent.trim());
+        assert(dropdownNameText.length > 0, `Profile dropdown shows user name: "${dropdownNameText}"`);
 
         // Test opening profile dropdown
         await page.click('#profileTriggerBtn');

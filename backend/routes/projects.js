@@ -134,4 +134,26 @@ router.post('/:id/join-request', async (req, res) => {
     }
 });
 
+// POST /api/projects/:id/reject
+// Reject join request from an applicant
+router.post('/:id/reject', async (req, res) => {
+    try {
+        const project = await Project.findById(req.params.id).populate('author', 'fullName email');
+        if (!project) {
+            return res.status(404).json({ message: 'Project not found' });
+        }
+
+        const { applicantName } = req.body;
+
+        res.json({
+            message: 'Join request rejected successfully',
+            projectTitle: project.title,
+            applicantName: applicantName || null
+        });
+    } catch (error) {
+        console.error('Reject Teammate Error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
+
 module.exports = router;

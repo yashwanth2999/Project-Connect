@@ -376,11 +376,13 @@ async function acceptProjectTeammate(projectId, projectTitle, notifIndex) {
     // 3. Update notification state
     if (typeof notifIndex === 'number' && mockNotifs[notifIndex]) {
         mockNotifs[notifIndex].status = "accepted";
+        saveNotifications();
         renderNotifications();
     } else {
         const notif = mockNotifs.find(n => (n.projectId === projectId || n.projectTitle === projectTitle) && (n.actionType === "accept_request" || n.type === "join_request"));
         if (notif) {
             notif.status = "accepted";
+            saveNotifications();
             renderNotifications();
         }
     }
@@ -408,7 +410,7 @@ if (requestForm) {
         const github = githubInput ? githubInput.value.trim() : "";
 
         closeRequestModal();
-        showToast("Request sent to project owner!");
+        showToast("Join request sent to project owner! Awaiting approval.");
 
         const applicantName = currentUser ? currentUser.fullName : "Student Applicant";
         const applicantEmail = currentUser ? currentUser.email : "applicant@college.edu";
@@ -440,21 +442,13 @@ if (requestForm) {
             status: "pending"
         };
         mockNotifs.unshift(newNotif);
+        saveNotifications();
         renderNotifications();
 
-        // Simulate Project Owner Accepting Request after 3s if not already handled
-        setTimeout(async () => {
-            const notif = mockNotifs.find(n => n.id === newNotif.id);
-            if (notif && notif.status === "pending") {
-                await acceptProjectTeammate(projectId, roomTitle);
-                notif.status = "accepted";
-                renderNotifications();
-                showToast(`Project owner accepted your request for '${roomTitle}'! Redirecting to group workspace...`);
-                setTimeout(() => {
-                    setupTeamGroup(roomTitle, ownerName, applicantName, applicantGithub);
-                }, 1000);
-            }
-        }, 3000);
+        // Broadcast join request to other connected clients via Socket.io
+        if (typeof socket !== 'undefined' && socket && socket.connected) {
+            socket.emit('send-join-request', newNotif);
+        }
 
         requestForm.reset();
     });
@@ -575,14 +569,32 @@ const notifBadge = document.getElementById("notifBadge");
 const notifListPage = document.getElementById("notifListPage");
 const clearNotifsPage = document.getElementById("clearNotifsPage");
 
-// Output mock notifications
+function getInitialNotifications() {
+    try {
+        const saved = localStorage.getItem('pc_notifications');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch (e) {
+        console.warn('Could not load saved notifications:', e);
+    }
+    return [
+        { text: "Arjun mentioned you in Team Chat", unread: true, time: "2 min ago", actionLabel: "Reply", actionType: "chat" },
+        { text: "New project: 'Smart Campus' posted in AI", unread: true, time: "1h ago", actionLabel: "View Project", actionType: "view_project" },
+        { text: "Your request for 'Web Saas' was viewed", unread: false, time: "3h ago", actionLabel: "Check Status", actionType: "view_request" }
+    ];
+}
 
-// Output mock notifications
-const mockNotifs = [
-    { text: "Arjun mentioned you in Team Chat", unread: true, time: "2 min ago", actionLabel: "Reply", actionType: "chat" },
-    { text: "New project: 'Smart Campus' posted in AI", unread: true, time: "1h ago", actionLabel: "View Project", actionType: "view_project" },
-    { text: "Your request for 'Web Saas' was viewed", unread: false, time: "3h ago", actionLabel: "Check Status", actionType: "view_request" }
-];
+const mockNotifs = getInitialNotifications();
+
+function saveNotifications() {
+    try {
+        localStorage.setItem('pc_notifications', JSON.stringify(mockNotifs));
+    } catch (e) {
+        console.warn('Could not save notifications:', e);
+    }
+}
 
 function renderNotifications() {
     if (!notifListPage) return;
@@ -598,7 +610,7 @@ function renderNotifications() {
     mockNotifs.forEach((n, index) => {
         const item = document.createElement("div");
 
-        if (n.type === "join_request" || n.githubLink) {
+        if (n.type === "join_request") {
             // Specialized Join Request Notification Card for Project Owner
             item.className = `notif-item notif-request-card ${n.unread ? 'unread' : ''}`;
             item.innerHTML = `
@@ -651,6 +663,64 @@ function renderNotifications() {
                     </div>
                 </div>
             `;
+        } else if (n.type === "request_accepted") {
+            // Specialized Acceptance Notification Card for Applicant
+            item.className = `notif-item notif-request-card ${n.unread ? 'unread' : ''}`;
+            item.innerHTML = `
+                <div class="notif-request-main">
+                    <div class="notif-request-header">
+                        <span class="icon" style="margin-top:2px;">
+                            <i data-lucide="check-circle-2" style="width:16px; height:16px; color:#22c55e;"></i>
+                        </span>
+                        <div style="flex:1;">
+                            <div class="notif-title-row">
+                                <strong style="color:#f8fafc; font-size:13px;">Request Accepted! 🎉</strong>
+                                <span style="font-size:11px; color:#22c55e; background:rgba(34,197,94,0.1); padding:2px 8px; border-radius:12px; border:1px solid rgba(34,197,94,0.25);">
+                                    Project: <strong>${n.projectTitle}</strong>
+                                </span>
+                            </div>
+                            <div style="font-size:12px; color:#cbd5e1; margin:4px 0; line-height: 1.5;">
+                                <strong>${n.ownerName || "Project Owner"}</strong> accepted your request to join <em>${n.projectTitle}</em>! The group workspace is ready for collaboration.
+                            </div>
+                            <div style="font-size:10px; color:var(--muted); margin-top:6px;">${n.time}</div>
+                        </div>
+                    </div>
+                    <div class="notif-actions-row">
+                        <button class="notif-action-btn notif-group-btn" data-action="view_group" data-index="${index}">
+                            <i data-lucide="users" style="width:13px; height:13px;"></i> Open Group Workspace
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else if (n.type === "request_rejected") {
+            // Specialized Rejection Notification Card for Applicant
+            item.className = `notif-item notif-request-card ${n.unread ? 'unread' : ''}`;
+            item.innerHTML = `
+                <div class="notif-request-main">
+                    <div class="notif-request-header">
+                        <span class="icon" style="margin-top:2px;">
+                            <i data-lucide="x-circle" style="width:16px; height:16px; color:#ef4444;"></i>
+                        </span>
+                        <div style="flex:1;">
+                            <div class="notif-title-row">
+                                <strong style="color:#f8fafc; font-size:13px;">Request Rejected</strong>
+                                <span style="font-size:11px; color:#f87171; background:rgba(239,68,68,0.1); padding:2px 8px; border-radius:12px; border:1px solid rgba(239,68,68,0.25);">
+                                    Project: <strong>${n.projectTitle}</strong>
+                                </span>
+                            </div>
+                            <div style="font-size:12px; color:#cbd5e1; margin:4px 0; line-height: 1.5;">
+                                <strong>${n.ownerName || "Project Owner"}</strong> declined your request to join <em>${n.projectTitle}</em>.
+                            </div>
+                            <div style="font-size:10px; color:var(--muted); margin-top:6px;">${n.time}</div>
+                        </div>
+                    </div>
+                    <div class="notif-actions-row">
+                        <span class="notif-badge-rejected">
+                            <i data-lucide="x" style="width:13px; height:13px;"></i> Request Declined
+                        </span>
+                    </div>
+                </div>
+            `;
         } else {
             // General notification item
             item.className = `notif-item ${n.unread ? 'unread' : ''}`;
@@ -695,17 +765,14 @@ if (notifListPage) {
                 return;
             }
 
-            // 1. Mark accepted
+            // 1. Mark owner's notification accepted
             notif.status = "accepted";
             notif.unread = false;
 
             // 2. Decrement remaining vacancies on project
             await acceptProjectTeammate(notif.projectId, notif.projectTitle);
 
-            // 3. Re-render notification state
-            renderNotifications();
-
-            // 4. Directly direct to Collaboration window and create team group!
+            // 3. Create group workspace
             setupTeamGroup(
                 notif.projectTitle,
                 notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
@@ -713,22 +780,102 @@ if (notifListPage) {
                 notif.githubLink || ""
             );
 
-            showToast(`Teammate accepted! Directed to collaboration workspace group.`);
+            // 4. Send acceptance notification to applicant
+            const applicantAcceptedNotif = {
+                id: Date.now() + 1,
+                type: "request_accepted",
+                projectId: notif.projectId,
+                projectTitle: notif.projectTitle,
+                ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                applicantName: notif.applicantName || "Applicant",
+                githubLink: notif.githubLink || "",
+                text: `${notif.ownerName || "Project Owner"} accepted your request to join '${notif.projectTitle}'!`,
+                unread: true,
+                time: "Just now",
+                status: "accepted"
+            };
+            mockNotifs.unshift(applicantAcceptedNotif);
+            saveNotifications();
+            renderNotifications();
+
+            // 5. Emit socket decision event in real time
+            if (typeof socket !== 'undefined' && socket && socket.connected) {
+                socket.emit('decision-join-request', {
+                    status: 'accepted',
+                    projectId: notif.projectId,
+                    projectTitle: notif.projectTitle,
+                    ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                    applicantName: notif.applicantName,
+                    applicantEmail: notif.applicantEmail,
+                    githubLink: notif.githubLink
+                });
+            }
+
+            showToast(`Accepted join request for '${notif.projectTitle}'! Group workspace created.`);
 
         } else if (action === "reject_request") {
+            if (notif.status === "rejected") {
+                showToast("This request has already been rejected.");
+                return;
+            }
+
+            // 1. Mark owner's notification rejected
             notif.status = "rejected";
             notif.unread = false;
+
+            // 2. Call backend reject endpoint if valid DB id
+            if (notif.projectId && !notif.projectId.toString().startsWith('demo-')) {
+                fetch(`${BASE_URL}/projects/${notif.projectId}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ applicantName: notif.applicantName })
+                }).catch(err => console.warn('Could not sync reject with backend:', err));
+            }
+
+            // 3. Send rejection notification to applicant
+            const applicantRejectedNotif = {
+                id: Date.now() + 1,
+                type: "request_rejected",
+                projectId: notif.projectId,
+                projectTitle: notif.projectTitle,
+                ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                applicantName: notif.applicantName || "Applicant",
+                githubLink: notif.githubLink || "",
+                text: `${notif.ownerName || "Project Owner"} rejected your request to join '${notif.projectTitle}'.`,
+                unread: true,
+                time: "Just now",
+                status: "rejected"
+            };
+            mockNotifs.unshift(applicantRejectedNotif);
+            saveNotifications();
             renderNotifications();
-            showToast(`Join request for '${notif.projectTitle}' from ${notif.applicantName || 'user'} was rejected.`);
+
+            // 4. Emit socket decision event in real time
+            if (typeof socket !== 'undefined' && socket && socket.connected) {
+                socket.emit('decision-join-request', {
+                    status: 'rejected',
+                    projectId: notif.projectId,
+                    projectTitle: notif.projectTitle,
+                    ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                    applicantName: notif.applicantName,
+                    applicantEmail: notif.applicantEmail,
+                    githubLink: notif.githubLink
+                });
+            }
+
+            showToast(`Rejected join request for '${notif.projectTitle}'.`);
 
         } else if (action === "view_group") {
+            notif.unread = false;
+            saveNotifications();
+            renderNotifications();
             setupTeamGroup(
                 notif.projectTitle,
                 notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
-                notif.applicantName || "Accepted Teammate",
+                notif.applicantName || (currentUser ? currentUser.fullName : "Accepted Teammate"),
                 notif.githubLink || ""
             );
-            showToast(`Opening team group for '${notif.projectTitle}'...`);
+            showToast(`Opening group workspace for '${notif.projectTitle}'...`);
 
         } else if (notif.actionType === "chat") {
             navigateTo("collaboration");
@@ -744,10 +891,10 @@ if (notifListPage) {
     });
 }
 
-
 if (clearNotifsPage) {
     clearNotifsPage.addEventListener("click", () => {
         mockNotifs.length = 0; // Clear array
+        saveNotifications();
         renderNotifications();
     });
 }
@@ -1749,6 +1896,70 @@ socket.on('connect', () => {
 
 socket.on('receive-message', (data) => {
     addTeamMessage(data.message, false, data.author);
+});
+
+// Handle incoming join requests in real time for project owners
+socket.on('receive-join-request', (data) => {
+    const newNotif = {
+        id: data.id || Date.now(),
+        type: "join_request",
+        projectId: data.projectId,
+        projectTitle: data.projectTitle,
+        ownerName: data.ownerName,
+        applicantName: data.applicantName,
+        applicantEmail: data.applicantEmail,
+        githubLink: data.githubLink,
+        pitch: data.pitch || "I have relevant experience and would like to join this project team!",
+        text: `${data.applicantName} requested to join '${data.projectTitle}'`,
+        unread: true,
+        time: "Just now",
+        status: "pending"
+    };
+    mockNotifs.unshift(newNotif);
+    saveNotifications();
+    renderNotifications();
+    showToast(`🔔 New join request for '${data.projectTitle}' from ${data.applicantName}!`);
+});
+
+// Handle real-time decision (accept or reject) for the applicant
+socket.on('receive-join-decision', (data) => {
+    if (data.status === 'accepted') {
+        const acceptNotif = {
+            id: Date.now(),
+            type: "request_accepted",
+            projectId: data.projectId,
+            projectTitle: data.projectTitle,
+            ownerName: data.ownerName,
+            applicantName: data.applicantName,
+            githubLink: data.githubLink,
+            text: `${data.ownerName || 'Project owner'} accepted your request to join '${data.projectTitle}'!`,
+            unread: true,
+            time: "Just now",
+            status: "accepted"
+        };
+        mockNotifs.unshift(acceptNotif);
+        saveNotifications();
+        renderNotifications();
+        showToast(`🎉 ${data.ownerName || 'Project owner'} accepted your request to join '${data.projectTitle}'!`);
+    } else if (data.status === 'rejected') {
+        const rejectNotif = {
+            id: Date.now(),
+            type: "request_rejected",
+            projectId: data.projectId,
+            projectTitle: data.projectTitle,
+            ownerName: data.ownerName,
+            applicantName: data.applicantName,
+            githubLink: data.githubLink,
+            text: `${data.ownerName || 'Project owner'} rejected your request to join '${data.projectTitle}'.`,
+            unread: true,
+            time: "Just now",
+            status: "rejected"
+        };
+        mockNotifs.unshift(rejectNotif);
+        saveNotifications();
+        renderNotifications();
+        showToast(`❌ ${data.ownerName || 'Project owner'} rejected your request to join '${data.projectTitle}'.`);
+    }
 });
 
 function addTeamMessage(text, isMe, authorName) {

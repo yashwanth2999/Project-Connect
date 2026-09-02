@@ -43,7 +43,7 @@ async function runBrowserTests() {
 
         // ── 1. Page Load & Initial State ──
         console.log('--- 1. Initial Page Load ---');
-        await page.goto('http://localhost:3000/', { waitUntil: 'networkidle0' });
+        await page.goto('http://localhost:5001/', { waitUntil: 'networkidle0' });
         await new Promise(r => setTimeout(r, 1000));
 
         const title = await page.title();
@@ -273,7 +273,32 @@ async function runBrowserTests() {
 
         await page.screenshot({ path: path.join(SCREENSHOT_DIR, '07_notifications_page.png') });
 
-        // Click Accept button as project owner
+        // Test Reject Flow first
+        console.log('  Testing Owner Reject Flow...');
+        await page.click('#notifListPage .notif-item:first-child .notif-reject-btn');
+        await new Promise(r => setTimeout(r, 600));
+
+        const hasRejectBadge = await page.$eval('#notifListPage .notif-item:nth-child(2)', el => el.textContent.includes('Rejected'));
+        assert(hasRejectBadge, 'Owner card updated to display Rejected badge');
+
+        const hasApplicantRejectNotif = await page.$eval('#notifListPage .notif-item:first-child', el => el.textContent.includes('Request Rejected'));
+        assert(hasApplicantRejectNotif, 'Rejection notification delivered to applicant with "Request Rejected" status');
+
+        // Now submit another request to test Accept Flow
+        console.log('  Testing Owner Accept Flow...');
+        await page.click('#openHome');
+        await new Promise(r => setTimeout(r, 500));
+        await page.click('#projectsGrid .project-card:first-child .project-btn');
+        await new Promise(r => setTimeout(r, 400));
+        await page.type('#requestForm textarea', 'Accepted applicant pitch.');
+        await page.type('#requestForm input[type="url"]', 'https://github.com/alex-accepted');
+        await page.click('#requestForm button[type="submit"]');
+        await new Promise(r => setTimeout(r, 600));
+
+        await page.click('#openNotifications');
+        await new Promise(r => setTimeout(r, 500));
+
+        // Click Accept button as project owner on the new request
         await page.click('#notifListPage .notif-item:first-child .notif-accept-btn');
         await new Promise(r => setTimeout(r, 800));
 
@@ -290,6 +315,12 @@ async function runBrowserTests() {
 
         const hasAnnouncement = await page.$eval('#teamChatMessages', el => el.textContent.includes('Team Formed Successfully'));
         assert(hasAnnouncement, 'System announcement posted in group chat confirming team formation');
+
+        // Verify applicant also has acceptance notification with "Open Group Workspace" button
+        await page.click('#openNotifications');
+        await new Promise(r => setTimeout(r, 500));
+        const hasAcceptNotif = await page.$eval('#notifListPage .notif-item:first-child', el => el.textContent.includes('Request Accepted!'));
+        assert(hasAcceptNotif, 'Acceptance notification delivered to applicant with "Request Accepted!" and group link');
 
         // Navigate back to Home and verify remaining vacancies updated
         await page.click('#openHome');
@@ -390,7 +421,7 @@ async function runBrowserTests() {
         console.log('\n--- 9. 3-Step OTP Password Reset UI ---');
         // Clear session to simulate user coming back to reset password
         await page.evaluate(() => localStorage.clear());
-        await page.goto('http://localhost:3000/', { waitUntil: 'networkidle0' });
+        await page.goto('http://localhost:5001/', { waitUntil: 'networkidle0' });
         await new Promise(r => setTimeout(r, 600));
 
         let isAuthOpenForForgot = await page.$eval('#authModal', el => !el.classList.contains('hidden'));

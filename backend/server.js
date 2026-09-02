@@ -50,6 +50,18 @@ io.on('connection', (socket) => {
         socket.to(roomId).emit('receive-message', data);
     });
 
+    // Handle real-time join request notifications to project owners
+    socket.on('send-join-request', (data) => {
+        // Broadcast join request to other connected clients
+        socket.broadcast.emit('receive-join-request', data);
+    });
+
+    // Handle real-time decision (accept/reject) back to applicant
+    socket.on('decision-join-request', (data) => {
+        // Broadcast decision to other connected clients
+        socket.broadcast.emit('receive-join-decision', data);
+    });
+
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
     });

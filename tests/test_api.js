@@ -287,6 +287,15 @@ async function runApiTests() {
         const acceptData2 = await acceptRes2.json();
         assert(acceptRes2.status === 200 && acceptData2.remainingVacancies === 2, 'Second accept decrements remaining vacancies further (3 -> 2)');
 
+        // Test reject teammate endpoint
+        const rejectRes = await fetch(`${API_URL}/projects/${createdProj._id}/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ applicantName: 'Rejected Applicant' })
+        });
+        const rejectData = await rejectRes.json();
+        assert(rejectRes.status === 200 && rejectData.message.includes('rejected successfully'), 'POST /projects/:id/reject returns 200 and success message');
+
     } catch (err) {
         assert(false, `Projects testing error: ${err.message}`);
     }

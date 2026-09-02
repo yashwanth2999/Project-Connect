@@ -18,11 +18,16 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Database connection with safe fallback
+let dbConnectionError = null;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/projectconnect';
-mongoose.connect(MONGO_URI).then(() => {
+mongoose.connect(MONGO_URI, {
+    serverSelectionTimeoutMS: 10000,
+}).then(() => {
     console.log('Connected to MongoDB');
+    dbConnectionError = null;
 }).catch(err => {
-    console.error('MongoDB connection error:', err.message || err);
+    dbConnectionError = err.message || String(err);
+    console.error('MongoDB connection error:', dbConnectionError);
 });
 
 // Socket.io setup for Team Workspace real-time engine
@@ -84,6 +89,16 @@ app.get('/api', (req, res) => {
 });
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
+});
+app.get('/api/db-status', (req, res) => {
+    const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+    res.json({
+        state: states[mongoose.connection.readyState] || 'unknown',
+        readyState: mongoose.connection.readyState,
+        error: dbConnectionError,
+        hasMongoUri: Boolean(process.env.MONGO_URI),
+        time: new Date().toISOString()
+    });
 });
 
 // Serve frontend static assets (CSS, JS, images)

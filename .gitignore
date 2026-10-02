@@ -16,6 +16,8 @@ backend/.env.local
 test.js
 logs/
 *.log
+screenshots/
+tests/screenshots/
 
 npm-debug.log*
 yarn-debug.log*

@@ -1,12 +1,42 @@
 const puppeteer = require('puppeteer-core');
 const path = require('path');
 const fs = require('fs');
+const { fork } = require('child_process');
 
 const CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const SCREENSHOT_DIR = '/Users/yash/.gemini/antigravity/brain/74203a86-bca9-4b8a-872a-40d81e6831fc/screenshots';
+const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || path.join(__dirname, 'screenshots');
+if (!fs.existsSync(SCREENSHOT_DIR)) {
+    fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+}
 
 let passedTests = 0;
 let failedTests = 0;
+let serverProcess = null;
+
+async function ensureServerRunning() {
+    try {
+        const res = await fetch('http://localhost:5001/api/health');
+        if (res.ok) return;
+    } catch (e) {}
+
+    console.log('📡 Starting background server on port 5001 for browser tests...');
+    serverProcess = fork(path.join(__dirname, '../backend/server.js'), [], {
+        stdio: 'inherit',
+        env: { ...process.env, PORT: 5001 }
+    });
+
+    for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        try {
+            const res = await fetch('http://localhost:5001/api/health');
+            if (res.ok) {
+                console.log('✅ Server ready!\n');
+                return;
+            }
+        } catch (e) {}
+    }
+    throw new Error('Timed out waiting for server to start on port 5001');
+}
 
 function assert(condition, message) {
     if (condition) {
@@ -19,6 +49,7 @@ function assert(condition, message) {
 }
 
 async function runBrowserTests() {
+    await ensureServerRunning();
     console.log('\n======================================================');
     console.log('🌐 RUNNING PROJECTCONNECT E2E BROWSER TEST SUITE');
     console.log('======================================================\n');
@@ -558,11 +589,13 @@ async function runBrowserTests() {
         console.log('======================================================\n');
 
         await browser.close();
+        if (serverProcess) serverProcess.kill('SIGTERM');
         process.exit(failedTests === 0 ? 0 : 1);
 
     } catch (err) {
         console.error('Fatal Browser Test Error:', err);
         if (browser) await browser.close();
+        if (serverProcess) serverProcess.kill('SIGTERM');
         process.exit(1);
     }
 }

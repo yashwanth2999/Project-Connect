@@ -1,10 +1,40 @@
 const io = require('socket.io-client');
+const { fork } = require('child_process');
+const path = require('path');
 
 const BASE_URL = 'http://localhost:5001';
 const API_URL = `${BASE_URL}/api`;
 
 let passedTests = 0;
 let failedTests = 0;
+let serverProcess = null;
+
+async function ensureServerRunning() {
+    try {
+        const res = await fetch(`${API_URL}/health`);
+        if (res.ok) return;
+    } catch (e) {
+        // Server not running yet
+    }
+
+    console.log('📡 Starting background server on port 5001 for test execution...');
+    serverProcess = fork(path.join(__dirname, '../backend/server.js'), [], {
+        stdio: 'inherit',
+        env: { ...process.env, PORT: 5001 }
+    });
+
+    for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        try {
+            const res = await fetch(`${API_URL}/health`);
+            if (res.ok) {
+                console.log('✅ Server ready!\n');
+                return;
+            }
+        } catch (e) {}
+    }
+    throw new Error('Timed out waiting for server to start on port 5001');
+}
 
 function assert(condition, message) {
     if (condition) {
@@ -17,6 +47,7 @@ function assert(condition, message) {
 }
 
 async function runApiTests() {
+    await ensureServerRunning();
     console.log('\n=============================================');
     console.log('🚀 RUNNING PROJECTCONNECT BACKEND API TEST SUITE');
     console.log('=============================================\n');
@@ -409,6 +440,10 @@ async function runApiTests() {
     console.log('\n=============================================');
     console.log(`API TEST SUITE COMPLETE: ${passedTests} PASSED, ${failedTests} FAILED`);
     console.log('=============================================\n');
+
+    if (serverProcess) {
+        serverProcess.kill('SIGTERM');
+    }
 
     process.exit(failedTests === 0 ? 0 : 1);
 }

@@ -262,7 +262,7 @@ router.put('/profile-picture', async (req, res) => {
         const user = await User.findByIdAndUpdate(
             decoded.userId,
             { profilePic: profilePic || null },
-            { new: true }
+            { returnDocument: 'after' }
         );
 
         if (!user) return res.status(404).json({ message: 'User not found' });

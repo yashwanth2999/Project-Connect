@@ -287,7 +287,7 @@ function setupTeamGroup(projectTitle, ownerName, teammateName, teammateGithub, d
     }
 }
 
-async function acceptProjectTeammate(projectId, projectTitle, notifIndex) {
+async function acceptProjectTeammate(projectId, projectTitle, notifIndex, applicantDetails) {
     let remainingVacancies = null;
 
     // 1. Call backend endpoint if valid DB id
@@ -295,7 +295,8 @@ async function acceptProjectTeammate(projectId, projectTitle, notifIndex) {
         try {
             const res = await fetch(`${BASE_URL}/projects/${projectId}/accept`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(applicantDetails || {})
             });
             if (res.ok) {
                 const data = await res.json();
@@ -489,8 +490,19 @@ if (projectForm) {
             });
 
             if (res.ok) {
+                const savedProject = await res.json();
                 showToast("Project idea published successfully!");
                 projectForm.reset();
+
+                // Add real workspace for the newly created project
+                addOrUpdateWorkspace({
+                    projectId: savedProject._id || savedProject.id,
+                    projectTitle: payload.title,
+                    ownerName: currentUser ? currentUser.fullName : "You",
+                    ownerEmail: currentUser ? currentUser.email : "",
+                    domain: payload.domain
+                });
+
                 navigateTo("home");
                 renderProjects(payload.domain);
             } else {
@@ -516,6 +528,14 @@ if (projectForm) {
                 demoProjects[payload.domain] = [];
             }
             demoProjects[payload.domain].unshift(demoProj);
+
+            addOrUpdateWorkspace({
+                projectId: 'demo-' + Date.now(),
+                projectTitle: payload.title,
+                ownerName: currentUser ? currentUser.fullName : "Demo User",
+                ownerEmail: currentUser ? currentUser.email : "",
+                domain: payload.domain
+            });
             
             showToast("Project idea published successfully! (Demo mode)");
             projectForm.reset();
@@ -820,8 +840,13 @@ if (notifListPage) {
             notif.status = "accepted";
             notif.unread = false;
 
-            // 2. Decrement remaining vacancies on project
-            await acceptProjectTeammate(notif.projectId, notif.projectTitle);
+            // 2. Decrement remaining vacancies on project & save real teammate
+            await acceptProjectTeammate(notif.projectId, notif.projectTitle, index, {
+                applicantName: notif.applicantName,
+                applicantEmail: notif.applicantEmail,
+                applicantGithub: notif.githubLink,
+                applicantId: notif.applicantId
+            });
 
             // 3. Create group workspace
             setupTeamGroup(
@@ -1997,140 +2022,117 @@ function getWorkspacesStorageKey() {
     return 'pc_workspaces_default';
 }
 
-function getDefaultWorkspaces() {
-    return [
-        {
-            id: 'proj-ai-health-diagnostic',
-            title: 'AI Health Diagnostic System',
-            domain: 'ai',
-            domainLabel: 'AI / ML',
-            role: 'owner',
-            roleLabel: '👑 Project Lead',
-            ownerName: currentUser ? currentUser.fullName : 'Project Lead',
-            ownerEmail: currentUser ? currentUser.email : 'owner@college.edu',
-            members: [
-                {
-                    name: currentUser ? currentUser.fullName : 'You',
-                    role: '👑 Project Owner',
-                    initials: currentUser ? currentUser.fullName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : 'ME',
-                    color: '#38bdf8',
-                    isOwner: true,
-                    github: ''
-                },
-                {
-                    name: 'Rahul Sharma',
-                    role: '🚀 Teammate',
-                    initials: 'RS',
-                    color: '#22c55e',
-                    isOwner: false,
-                    github: 'https://github.com/rahul-sharma'
-                }
-            ],
-            messages: [
-                {
-                    id: 'm-1',
-                    author: 'System',
-                    text: 'Workspace created for AI Health Diagnostic System.',
-                    time: '10:00 AM',
-                    isMe: false,
-                    isSystem: true
-                },
-                {
-                    id: 'm-2',
-                    author: 'Rahul Sharma',
-                    text: 'Hey team! I compiled our initial dataset architecture and CNN model design.',
-                    time: '10:05 AM',
-                    isMe: false,
-                    file: {
-                        name: 'health_dataset_schema.pdf',
-                        size: '520 KB',
-                        type: 'application/pdf',
-                        uploader: 'Rahul Sharma',
-                        time: '10:05 AM',
-                        dataUrl: null
-                    }
-                }
-            ],
-            files: [
-                {
-                    id: 'f-1',
-                    name: 'health_dataset_schema.pdf',
-                    size: '520 KB',
-                    type: 'application/pdf',
-                    uploader: 'Rahul Sharma',
-                    time: '10:05 AM',
-                    dataUrl: null
-                }
-            ],
-            unreadCount: 0
-        },
-        {
-            id: 'proj-smart-campus-transit',
-            title: 'Smart Campus Transit Tracker',
-            domain: 'web',
-            domainLabel: 'Web Development',
-            role: 'member',
-            roleLabel: '🚀 Teammate',
-            ownerName: 'David Kim',
-            ownerEmail: 'david@college.edu',
-            members: [
-                {
-                    name: 'David Kim',
-                    role: '👑 Project Owner',
-                    initials: 'DK',
-                    color: '#38bdf8',
-                    isOwner: true,
-                    github: 'https://github.com/davidkim'
-                },
-                {
-                    name: currentUser ? currentUser.fullName : 'You',
-                    role: '🚀 Teammate',
-                    initials: currentUser ? currentUser.fullName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : 'ME',
-                    color: '#a855f7',
-                    isOwner: false,
-                    github: ''
-                }
-            ],
-            messages: [
-                {
-                    id: 'm-3',
-                    author: 'System',
-                    text: 'Workspace created for Smart Campus Transit Tracker.',
-                    time: 'Yesterday',
-                    isMe: false,
-                    isSystem: true
-                },
-                {
-                    id: 'm-4',
-                    author: 'David Kim',
-                    text: 'Welcome to the team! Excited to build the real-time bus tracking system together.',
-                    time: 'Yesterday',
-                    isMe: false
-                }
-            ],
-            files: [],
-            unreadCount: 0
-        }
-    ];
-}
-
-function loadUserWorkspaces() {
+async function loadUserWorkspaces() {
+    let saved = [];
     try {
         const key = getWorkspacesStorageKey();
-        const saved = localStorage.getItem(key);
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                userWorkspaces = parsed;
-            } else {
-                userWorkspaces = getDefaultWorkspaces();
-            }
-        } else {
-            userWorkspaces = getDefaultWorkspaces();
+        const raw = localStorage.getItem(key);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) saved = parsed;
         }
     } catch (e) {
-        console.warn('Could not load workspaces:', e);
-        userWorkspaces = getDefaultWorkspaces();
+        console.warn('Could not load local workspaces:', e);
+    }
+
+    // If logged in, fetch real-time projects from backend API
+    if (authToken && currentUser) {
+        try {
+            const res = await fetch(`${BASE_URL}/projects/my-teams`, {
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                }
+            });
+
+            if (res.ok) {
+                const backendProjects = await res.json();
+                if (Array.isArray(backendProjects)) {
+                    const realWorkspaces = [];
+                    const currentUserId = currentUser.id || currentUser._id;
+                    const currentUserEmail = (currentUser.email || '').toLowerCase();
+                    const currentUserName = currentUser.fullName || 'You';
+
+                    backendProjects.forEach(p => {
+                        const projId = p._id || p.id;
+                        const workspaceId = 'proj-' + String(projId).replace(/[^a-zA-Z0-9-]/g, '');
+                        const ownerObj = typeof p.author === 'object' && p.author ? p.author : null;
+                        const ownerName = ownerObj ? ownerObj.fullName : (p.owner || 'Project Owner');
+                        const ownerEmail = ownerObj ? (ownerObj.email || '').toLowerCase() : '';
+                        const ownerId = ownerObj ? (ownerObj._id || ownerObj.id) : null;
+
+                        const isOwner = (ownerId && currentUserId && String(ownerId) === String(currentUserId)) ||
+                                        (ownerEmail && currentUserEmail && ownerEmail === currentUserEmail) ||
+                                        (ownerName && currentUserName && ownerName.toLowerCase() === currentUserName.toLowerCase());
+
+                        const ownerInitials = (ownerName || 'TL').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'TL';
+
+                        // Build members list from backend project
+                        const membersList = [
+                            {
+                                name: ownerName,
+                                role: '👑 Project Owner',
+                                initials: ownerInitials,
+                                color: '#38bdf8',
+                                isOwner: true,
+                                github: ''
+                            }
+                        ];
+
+                        (p.members || []).forEach(m => {
+                            const mInitials = (m.name || 'TM').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'TM';
+                            if (!membersList.some(existing => existing.name.toLowerCase() === (m.name || '').toLowerCase())) {
+                                membersList.push({
+                                    name: m.name,
+                                    role: m.role || '🚀 Teammate',
+                                    initials: mInitials,
+                                    color: '#22c55e',
+                                    isOwner: false,
+                                    github: m.github || ''
+                                });
+                            }
+                        });
+
+                        // Look up any existing saved messages/files from localStorage
+                        const localWs = saved.find(s => s.id === workspaceId || s.title.toLowerCase() === (p.title || '').toLowerCase());
+
+                        realWorkspaces.push({
+                            id: workspaceId,
+                            title: p.title,
+                            domain: p.domain || 'ai',
+                            domainLabel: (p.domain || 'AI / ML').toUpperCase(),
+                            role: isOwner ? 'owner' : 'member',
+                            roleLabel: isOwner ? '👑 Project Lead' : '🚀 Teammate',
+                            ownerName: ownerName,
+                            ownerEmail: ownerEmail,
+                            members: membersList,
+                            messages: localWs && localWs.messages && localWs.messages.length > 0 ? localWs.messages : [
+                                {
+                                    id: 'sys-' + Date.now(),
+                                    author: 'System',
+                                    text: `Workspace initialized for real project '${p.title}'.`,
+                                    time: 'Just now',
+                                    isSystem: true,
+                                    isMe: false
+                                }
+                            ],
+                            files: localWs && localWs.files ? localWs.files : [],
+                            unreadCount: localWs ? (localWs.unreadCount || 0) : 0
+                        });
+                    });
+
+                    userWorkspaces = realWorkspaces;
+                    saveUserWorkspaces();
+                }
+            } else {
+                userWorkspaces = saved;
+            }
+        } catch (err) {
+            console.warn('Could not sync with backend /projects/my-teams, using cached workspaces:', err);
+            userWorkspaces = saved;
+        }
+    } else {
+        // Not logged in (guest mode)
+        userWorkspaces = saved;
     }
 
     if (!activeWorkspaceId || !userWorkspaces.some(w => w.id === activeWorkspaceId)) {
@@ -2211,6 +2213,27 @@ function addOrUpdateWorkspace(params) {
     const applicantInitials = (applicantName || "Teammate").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "TM";
 
     if (!existing) {
+        const initialMembers = [
+            {
+                name: ownerName || "Project Owner",
+                role: "👑 Project Owner",
+                initials: ownerInitials,
+                color: "#38bdf8",
+                isOwner: true,
+                github: ""
+            }
+        ];
+        if (applicantName && applicantName !== ownerName) {
+            initialMembers.push({
+                name: applicantName,
+                role: "🚀 Teammate",
+                initials: applicantInitials,
+                color: "#22c55e",
+                isOwner: false,
+                github: applicantGithub || ""
+            });
+        }
+
         existing = {
             id: workspaceId,
             title: title,
@@ -2220,24 +2243,7 @@ function addOrUpdateWorkspace(params) {
             roleLabel: isCurrentOwner ? '👑 Project Lead' : '🚀 Teammate',
             ownerName: ownerName || "Project Lead",
             ownerEmail: ownerEmail || null,
-            members: [
-                {
-                    name: ownerName || "Project Owner",
-                    role: "👑 Project Owner",
-                    initials: ownerInitials,
-                    color: "#38bdf8",
-                    isOwner: true,
-                    github: ""
-                },
-                {
-                    name: applicantName || "Teammate",
-                    role: "🚀 Teammate",
-                    initials: applicantInitials,
-                    color: "#22c55e",
-                    isOwner: false,
-                    github: applicantGithub || ""
-                }
-            ],
+            members: initialMembers,
             messages: [
                 {
                     id: 'sys-' + Date.now(),
@@ -2296,7 +2302,22 @@ function renderWorkspaceSwitcher() {
 
     list.innerHTML = "";
     if (userWorkspaces.length === 0) {
-        list.innerHTML = `<div style="font-size:11px; color:#64748b; text-align:center; padding:16px 8px;">No projects joined yet. Request to join or post a project!</div>`;
+        list.innerHTML = `
+            <div class="workspace-empty-state">
+                <div class="workspace-empty-icon"><i data-lucide="folder-plus" style="width:18px; height:18px;"></i></div>
+                <div class="workspace-empty-title">No Active Teams</div>
+                <div class="workspace-empty-desc">Create your own project or request to join one to start collaborating in real time!</div>
+                <div class="workspace-empty-actions">
+                    <button class="empty-btn-primary" id="emptyPostProjBtn" type="button"><i data-lucide="plus" style="width:13px; height:13px;"></i> Post a Project</button>
+                    <button class="empty-btn-secondary" id="emptyExploreBtn" type="button"><i data-lucide="compass" style="width:13px; height:13px;"></i> Explore Ideas</button>
+                </div>
+            </div>
+        `;
+        const pBtn = document.getElementById("emptyPostProjBtn");
+        const eBtn = document.getElementById("emptyExploreBtn");
+        if (pBtn) pBtn.addEventListener("click", () => navigateTo("post-project"));
+        if (eBtn) eBtn.addEventListener("click", () => navigateTo("home"));
+        if (window.lucide) lucide.createIcons();
         return;
     }
 
@@ -2335,26 +2356,82 @@ function renderWorkspaceSwitcher() {
 
         list.appendChild(item);
     });
+
+    if (window.lucide) lucide.createIcons();
 }
 
 function renderActiveWorkspace() {
     const ws = userWorkspaces.find(w => w.id === activeWorkspaceId) || userWorkspaces[0];
-    if (!ws) return;
+
+    const titleEl = document.getElementById("teamRoomTitle");
+    const domainBadge = document.getElementById("teamDomainBadge");
+    const roleBadge = document.getElementById("teamRoleBadge");
+    const chatInput = document.getElementById("teamChatInput");
+    const membersList = document.getElementById("teamSidebarMembers");
+    const countLabel = document.getElementById("teamMembersCountLabel");
+    const filesList = document.getElementById("teamFilesList");
+    const countBadge = document.getElementById("teamFilesCount");
+    const chatContainer = document.getElementById("teamChatMessages");
+
+    if (!ws || userWorkspaces.length === 0) {
+        if (titleEl) titleEl.textContent = "Collaboration Hub";
+        if (domainBadge) domainBadge.textContent = "Ready";
+        if (roleBadge) roleBadge.textContent = "Student";
+        if (chatInput) chatInput.placeholder = "Create or join a project team to start chatting...";
+
+        if (countLabel) countLabel.textContent = "Team Members (1)";
+        if (membersList) {
+            const userInitial = currentUser ? (currentUser.fullName || 'U').charAt(0).toUpperCase() : 'U';
+            const userName = currentUser ? currentUser.fullName : 'You';
+            membersList.innerHTML = `
+                <div class="member-item">
+                    <div class="member-avatar" style="background:#38bdf8">${userInitial}</div>
+                    <div class="member-info">
+                        <div class="member-name">${userName}</div>
+                        <div class="member-role" style="color:#38bdf8; font-weight:600;">Student</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (countBadge) countBadge.textContent = "0";
+        if (filesList) {
+            filesList.innerHTML = `
+                <div class="files-empty-notice">
+                    <i data-lucide="folder-open" style="width:22px; height:22px; color:#64748b; margin-bottom:6px; display:inline-block;"></i>
+                    <div>No shared files yet.</div>
+                </div>
+            `;
+        }
+
+        if (chatContainer) {
+            chatContainer.innerHTML = `
+                <div class="team-empty-chat-hero">
+                    <div class="team-empty-chat-icon"><i data-lucide="sparkles" style="width:28px; height:28px;"></i></div>
+                    <h3>Your Project Collaboration Workspace</h3>
+                    <p>Once you create a project idea or join a peer's team, your dedicated real-time chat, shared file repository, and encrypted video room will appear here automatically.</p>
+                    <div style="display:flex; gap:10px; justify-content:center; margin-top:8px;">
+                        <button class="pill-btn pill-btn-primary" id="heroPostBtn" type="button"><i data-lucide="plus" class="icon"></i> Post a Project</button>
+                        <button class="pill-btn pill-btn-outline" id="heroExploreBtn" type="button" style="border:1px solid rgba(56,189,248,0.3); color:#38bdf8;"><i data-lucide="compass" class="icon"></i> Explore Ideas</button>
+                    </div>
+                </div>
+            `;
+            const hpBtn = document.getElementById("heroPostBtn");
+            const heBtn = document.getElementById("heroExploreBtn");
+            if (hpBtn) hpBtn.addEventListener("click", () => navigateTo("post-project"));
+            if (heBtn) heBtn.addEventListener("click", () => navigateTo("home"));
+        }
+
+        if (window.lucide) lucide.createIcons();
+        return;
+    }
+
     activeWorkspaceId = ws.id;
     currentRoomId = ws.id;
 
-    // Header updates
-    const titleEl = document.getElementById("teamRoomTitle");
     if (titleEl) titleEl.textContent = ws.title;
-
-    const domainBadge = document.getElementById("teamDomainBadge");
     if (domainBadge) domainBadge.textContent = (ws.domain || 'AI / ML').toUpperCase();
-
-    const roleBadge = document.getElementById("teamRoleBadge");
     if (roleBadge) roleBadge.textContent = ws.role === 'owner' ? '👑 Project Lead' : '🚀 Teammate';
-
-    // Input placeholder
-    const chatInput = document.getElementById("teamChatInput");
     if (chatInput) chatInput.placeholder = `Type a message in ${ws.title}... (Press Enter to send)`;
 
     renderActiveWorkspaceMembers(ws);

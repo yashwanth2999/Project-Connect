@@ -37,6 +37,25 @@ router.get('/', async (req, res) => {
     }
 });
 
+// GET /api/projects/my-teams
+// Fetch all real-time projects the authenticated user owns or is a member of
+router.get('/my-teams', auth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const projects = await Project.find({
+            $or: [
+                { author: userId },
+                { 'members.user': userId }
+            ]
+        }).populate('author', 'fullName email').sort({ updatedAt: -1 });
+
+        res.json(projects);
+    } catch (error) {
+        console.error('Fetch My Teams Error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
+
 // POST /api/projects
 router.post('/', auth, async (req, res) => {
     try {
@@ -55,12 +74,13 @@ router.post('/', auth, async (req, res) => {
             teamSize,
             description,
             collegeOnly,
+            members: [],
             author: req.user.userId
         });
 
         const savedProject = await newProject.save();
         // Populate author before returning to immediately show it correctly on frontend
-        await savedProject.populate('author', 'fullName');
+        await savedProject.populate('author', 'fullName email');
 
         res.status(201).json(savedProject);
     } catch (error) {
@@ -70,7 +90,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // POST /api/projects/:id/accept
-// Accept join request from an applicant and decrement remaining vacancies
+// Accept join request from an applicant, add them to team members, and decrement vacancies
 router.post('/:id/accept', async (req, res) => {
     try {
         const project = await Project.findById(req.params.id);
@@ -87,7 +107,22 @@ router.post('/:id/accept', async (req, res) => {
             });
         }
 
+        const { applicantName, applicantEmail, applicantGithub, applicantId } = req.body;
+
         project.acceptedMembers = currentAccepted + 1;
+        if (applicantName) {
+            const alreadyMember = (project.members || []).some(m => m.name && m.name.toLowerCase() === applicantName.toLowerCase());
+            if (!alreadyMember) {
+                project.members.push({
+                    user: applicantId || null,
+                    name: applicantName,
+                    email: applicantEmail || '',
+                    github: applicantGithub || '',
+                    role: '🚀 Teammate'
+                });
+            }
+        }
+
         await project.save();
         await project.populate('author', 'fullName email');
 

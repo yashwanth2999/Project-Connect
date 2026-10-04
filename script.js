@@ -190,7 +190,9 @@ async function renderProjects(domain) {
             joinBtn.innerHTML = `<span>Request to join</span> <i data-lucide="handshake" style="width:14px; height:14px;"></i>`;
             joinBtn.addEventListener("click", () => {
                 const ownerName = typeof p.author === 'object' && p.author ? p.author.fullName : (p.owner || "Project Owner");
-                openRequestModal(p._id || p.title, p.title, ownerName);
+                const ownerEmail = typeof p.author === 'object' && p.author ? p.author.email : (p.ownerEmail || null);
+                const ownerId = typeof p.author === 'object' && p.author ? (p.author._id || p.author.id) : (p.ownerId || null);
+                openRequestModal(p._id || p.title, p.title, ownerName, ownerEmail, ownerId);
             });
         }
 
@@ -246,11 +248,15 @@ const requestForm = document.getElementById("requestForm");
 const requestProjectTitle = document.getElementById("requestProjectTitle");
 let currentRequestProjectId = null;
 let currentRequestProjectOwner = null;
+let currentRequestProjectOwnerEmail = null;
+let currentRequestProjectOwnerId = null;
 
-function openRequestModal(projectId, projectTitle, ownerName) {
+function openRequestModal(projectId, projectTitle, ownerName, ownerEmail, ownerId) {
     if (!requestModal) return;
     currentRequestProjectId = projectId;
     currentRequestProjectOwner = ownerName || "Project Owner";
+    currentRequestProjectOwnerEmail = ownerEmail || null;
+    currentRequestProjectOwnerId = ownerId || null;
     requestProjectTitle.textContent = projectTitle;
     requestModal.classList.remove("hidden");
     requestModal.classList.add("open");
@@ -403,6 +409,8 @@ if (requestForm) {
         const roomTitle = requestProjectTitle.textContent;
         const projectId = currentRequestProjectId;
         const ownerName = currentRequestProjectOwner || "Project Owner";
+        const ownerEmail = currentRequestProjectOwnerEmail;
+        const ownerId = currentRequestProjectOwnerId;
 
         const pitchInput = document.getElementById("requestPitchInput");
         const githubInput = document.getElementById("requestGithubInput");
@@ -414,6 +422,7 @@ if (requestForm) {
 
         const applicantName = currentUser ? currentUser.fullName : "Student Applicant";
         const applicantEmail = currentUser ? currentUser.email : "applicant@college.edu";
+        const applicantId = currentUser ? (currentUser.id || currentUser._id) : null;
         const applicantGithub = github || "https://github.com/student-applicant";
 
         // Send join-request to backend if valid DB id
@@ -425,29 +434,78 @@ if (requestForm) {
             }).catch(err => console.warn('Could not register join request:', err));
         }
 
-        // Add Notification for the Project Owner with [Accept] & [Reject] actions and submitted GitHub link
-        const newNotif = {
-            id: Date.now(),
-            type: "join_request",
-            projectId: projectId,
-            projectTitle: roomTitle,
-            ownerName: ownerName,
-            applicantName: applicantName,
-            applicantEmail: applicantEmail,
-            githubLink: applicantGithub,
-            pitch: pitch || "I have relevant experience and would like to join this project team!",
-            text: `${applicantName} requested to join '${roomTitle}'`,
-            unread: true,
-            time: "Just now",
-            status: "pending"
-        };
-        mockNotifs.unshift(newNotif);
+        const isSelfApplication = currentUser && (
+            (ownerEmail && currentUser.email && ownerEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+            (ownerId && currentUser.id && String(ownerId) === String(currentUser.id)) ||
+            (ownerName && currentUser.fullName && ownerName.toLowerCase() === currentUser.fullName.toLowerCase())
+        );
+
+        if (isSelfApplication) {
+            // Self-application (owner testing approval flow on own project)
+            const ownerNotif = {
+                id: Date.now(),
+                type: "join_request",
+                projectId: projectId,
+                projectTitle: roomTitle,
+                ownerName: ownerName,
+                ownerEmail: ownerEmail,
+                ownerId: ownerId,
+                applicantName: applicantName,
+                applicantEmail: applicantEmail,
+                applicantId: applicantId,
+                githubLink: applicantGithub,
+                pitch: pitch || "I have relevant experience and would like to join this project team!",
+                text: `${applicantName} requested to join '${roomTitle}'`,
+                unread: true,
+                time: "Just now",
+                status: "pending"
+            };
+            mockNotifs.unshift(ownerNotif);
+        } else {
+            // True applicant: Add personalized Application Sent notification (no Accept/Reject buttons)
+            const applicantNotif = {
+                id: Date.now(),
+                type: "request_sent",
+                projectId: projectId,
+                projectTitle: roomTitle,
+                ownerName: ownerName,
+                ownerEmail: ownerEmail,
+                ownerId: ownerId,
+                applicantName: applicantName,
+                applicantEmail: applicantEmail,
+                applicantId: applicantId,
+                githubLink: applicantGithub,
+                pitch: pitch || "I have relevant experience and would like to join this project team!",
+                text: `You requested to join '${roomTitle}'`,
+                unread: true,
+                time: "Just now",
+                status: "pending"
+            };
+            mockNotifs.unshift(applicantNotif);
+        }
+
         saveNotifications();
         renderNotifications();
 
         // Broadcast join request to other connected clients via Socket.io
         if (typeof socket !== 'undefined' && socket && socket.connected) {
-            socket.emit('send-join-request', newNotif);
+            socket.emit('send-join-request', {
+                id: Date.now(),
+                type: "join_request",
+                projectId: projectId,
+                projectTitle: roomTitle,
+                ownerName: ownerName,
+                ownerEmail: ownerEmail,
+                ownerId: ownerId,
+                applicantName: applicantName,
+                applicantEmail: applicantEmail,
+                applicantId: applicantId,
+                githubLink: applicantGithub,
+                pitch: pitch || "I have relevant experience and would like to join this project team!",
+                text: `${applicantName} requested to join '${roomTitle}'`,
+                time: "Just now",
+                status: "pending"
+            });
         }
 
         requestForm.reset();
@@ -569,9 +627,17 @@ const notifBadge = document.getElementById("notifBadge");
 const notifListPage = document.getElementById("notifListPage");
 const clearNotifsPage = document.getElementById("clearNotifsPage");
 
+function getNotificationStorageKey() {
+    if (currentUser && (currentUser.email || currentUser.id)) {
+        return `pc_notifications_${currentUser.email || currentUser.id}`;
+    }
+    return 'pc_notifications';
+}
+
 function getInitialNotifications() {
     try {
-        const saved = localStorage.getItem('pc_notifications');
+        const key = getNotificationStorageKey();
+        const saved = localStorage.getItem(key);
         if (saved) {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed)) return parsed;
@@ -580,20 +646,24 @@ function getInitialNotifications() {
         console.warn('Could not load saved notifications:', e);
     }
     return [
-        { text: "Arjun mentioned you in Team Chat", unread: true, time: "2 min ago", actionLabel: "Reply", actionType: "chat" },
-        { text: "New project: 'Smart Campus' posted in AI", unread: true, time: "1h ago", actionLabel: "View Project", actionType: "view_project" },
-        { text: "Your request for 'Web Saas' was viewed", unread: false, time: "3h ago", actionLabel: "Check Status", actionType: "view_request" }
+        { text: "Welcome to ProjectConnect! Discover project ideas and collaborate with peers.", unread: true, time: "Just now", actionLabel: "Explore", actionType: "view_project" }
     ];
 }
 
-const mockNotifs = getInitialNotifications();
+let mockNotifs = getInitialNotifications();
 
 function saveNotifications() {
     try {
-        localStorage.setItem('pc_notifications', JSON.stringify(mockNotifs));
+        const key = getNotificationStorageKey();
+        localStorage.setItem(key, JSON.stringify(mockNotifs));
     } catch (e) {
         console.warn('Could not save notifications:', e);
     }
+}
+
+function loadUserNotifications() {
+    mockNotifs = getInitialNotifications();
+    renderNotifications();
 }
 
 function renderNotifications() {
@@ -611,7 +681,7 @@ function renderNotifications() {
         const item = document.createElement("div");
 
         if (n.type === "join_request") {
-            // Specialized Join Request Notification Card for Project Owner
+            // Specialized Join Request Notification Card for Project Owner (Has Accept/Reject actions)
             item.className = `notif-item notif-request-card ${n.unread ? 'unread' : ''}`;
             item.innerHTML = `
                 <div class="notif-request-main">
@@ -658,6 +728,49 @@ function renderNotifications() {
                         ` : `
                             <span class="notif-badge-rejected">
                                 <i data-lucide="x-circle" style="width:13px; height:13px;"></i> Rejected
+                            </span>
+                        `}
+                    </div>
+                </div>
+            `;
+        } else if (n.type === "request_sent") {
+            // Specialized Application Sent Status Card for Applicant (NO Accept/Reject buttons)
+            item.className = `notif-item notif-request-card ${n.unread ? 'unread' : ''}`;
+            item.innerHTML = `
+                <div class="notif-request-main">
+                    <div class="notif-request-header">
+                        <span class="icon" style="margin-top:2px;">
+                            <i data-lucide="clock" style="width:16px; height:16px; color:#38bdf8;"></i>
+                        </span>
+                        <div style="flex:1;">
+                            <div class="notif-title-row">
+                                <strong style="color:#f8fafc; font-size:13px;">Application Submitted</strong>
+                                <span style="font-size:11px; color:#38bdf8; background:rgba(56,189,248,0.1); padding:2px 8px; border-radius:12px; border:1px solid rgba(56,189,248,0.25);">
+                                    Project: <strong>${n.projectTitle}</strong>
+                                </span>
+                            </div>
+                            <div style="font-size:12px; color:#cbd5e1; margin:4px 0; line-height: 1.5;">
+                                You applied to join <strong>${n.projectTitle}</strong> (Owner: <em>${n.ownerName || 'Project Owner'}</em>). Awaiting owner review.
+                            </div>
+                            ${n.pitch ? `<div class="notif-pitch-text">Your pitch: "${n.pitch}"</div>` : ''}
+                            <div style="font-size:10px; color:var(--muted); margin-top:6px;">${n.time}</div>
+                        </div>
+                    </div>
+                    <div class="notif-actions-row">
+                        ${n.status === 'accepted' ? `
+                            <span class="notif-badge-accepted">
+                                <i data-lucide="check-circle" style="width:13px; height:13px;"></i> Accepted by Owner
+                            </span>
+                            <button class="notif-action-btn notif-group-btn" data-action="view_group" data-index="${index}">
+                                <i data-lucide="users" style="width:13px; height:13px;"></i> Open Group
+                            </button>
+                        ` : n.status === 'rejected' ? `
+                            <span class="notif-badge-rejected">
+                                <i data-lucide="x-circle" style="width:13px; height:13px;"></i> Request Declined
+                            </span>
+                        ` : `
+                            <span style="font-size:11px; color:#38bdf8; display:flex; align-items:center; gap:5px; background:rgba(56,189,248,0.08); padding:3px 8px; border-radius:8px; border:1px solid rgba(56,189,248,0.2);">
+                                <i data-lucide="hourglass" style="width:12px; height:12px;"></i> Pending Owner Decision
                             </span>
                         `}
                     </div>
@@ -780,33 +893,48 @@ if (notifListPage) {
                 notif.githubLink || ""
             );
 
-            // 4. Send acceptance notification to applicant
-            const applicantAcceptedNotif = {
-                id: Date.now() + 1,
-                type: "request_accepted",
-                projectId: notif.projectId,
-                projectTitle: notif.projectTitle,
-                ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
-                applicantName: notif.applicantName || "Applicant",
-                githubLink: notif.githubLink || "",
-                text: `${notif.ownerName || "Project Owner"} accepted your request to join '${notif.projectTitle}'!`,
-                unread: true,
-                time: "Just now",
-                status: "accepted"
-            };
-            mockNotifs.unshift(applicantAcceptedNotif);
+            // If this is a self-application test on the same client, also update applicant status
+            const isSelfApp = currentUser && (
+                (notif.applicantEmail && currentUser.email && notif.applicantEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+                (notif.applicantName && currentUser.fullName && notif.applicantName.toLowerCase() === currentUser.fullName.toLowerCase())
+            );
+
+            if (isSelfApp) {
+                const sentNotif = mockNotifs.find(n => (n.projectId === notif.projectId || n.projectTitle === notif.projectTitle) && n.type === 'request_sent');
+                if (sentNotif) {
+                    sentNotif.status = "accepted";
+                }
+                const applicantAcceptedNotif = {
+                    id: Date.now() + 1,
+                    type: "request_accepted",
+                    projectId: notif.projectId,
+                    projectTitle: notif.projectTitle,
+                    ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                    applicantName: notif.applicantName || "Applicant",
+                    githubLink: notif.githubLink || "",
+                    text: `${notif.ownerName || "Project Owner"} accepted your request to join '${notif.projectTitle}'!`,
+                    unread: true,
+                    time: "Just now",
+                    status: "accepted"
+                };
+                mockNotifs.unshift(applicantAcceptedNotif);
+            }
+
             saveNotifications();
             renderNotifications();
 
-            // 5. Emit socket decision event in real time
+            // 4. Emit socket decision event in real time to the applicant
             if (typeof socket !== 'undefined' && socket && socket.connected) {
                 socket.emit('decision-join-request', {
                     status: 'accepted',
                     projectId: notif.projectId,
                     projectTitle: notif.projectTitle,
                     ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                    ownerEmail: notif.ownerEmail,
+                    ownerId: notif.ownerId,
                     applicantName: notif.applicantName,
                     applicantEmail: notif.applicantEmail,
+                    applicantId: notif.applicantId,
                     githubLink: notif.githubLink
                 });
             }
@@ -832,33 +960,48 @@ if (notifListPage) {
                 }).catch(err => console.warn('Could not sync reject with backend:', err));
             }
 
-            // 3. Send rejection notification to applicant
-            const applicantRejectedNotif = {
-                id: Date.now() + 1,
-                type: "request_rejected",
-                projectId: notif.projectId,
-                projectTitle: notif.projectTitle,
-                ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
-                applicantName: notif.applicantName || "Applicant",
-                githubLink: notif.githubLink || "",
-                text: `${notif.ownerName || "Project Owner"} rejected your request to join '${notif.projectTitle}'.`,
-                unread: true,
-                time: "Just now",
-                status: "rejected"
-            };
-            mockNotifs.unshift(applicantRejectedNotif);
+            // If self-application test on the same client, also update applicant status
+            const isSelfApp = currentUser && (
+                (notif.applicantEmail && currentUser.email && notif.applicantEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+                (notif.applicantName && currentUser.fullName && notif.applicantName.toLowerCase() === currentUser.fullName.toLowerCase())
+            );
+
+            if (isSelfApp) {
+                const sentNotif = mockNotifs.find(n => (n.projectId === notif.projectId || n.projectTitle === notif.projectTitle) && n.type === 'request_sent');
+                if (sentNotif) {
+                    sentNotif.status = "rejected";
+                }
+                const applicantRejectedNotif = {
+                    id: Date.now() + 1,
+                    type: "request_rejected",
+                    projectId: notif.projectId,
+                    projectTitle: notif.projectTitle,
+                    ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                    applicantName: notif.applicantName || "Applicant",
+                    githubLink: notif.githubLink || "",
+                    text: `${notif.ownerName || "Project Owner"} rejected your request to join '${notif.projectTitle}'.`,
+                    unread: true,
+                    time: "Just now",
+                    status: "rejected"
+                };
+                mockNotifs.unshift(applicantRejectedNotif);
+            }
+
             saveNotifications();
             renderNotifications();
 
-            // 4. Emit socket decision event in real time
+            // 3. Emit socket decision event in real time to the applicant
             if (typeof socket !== 'undefined' && socket && socket.connected) {
                 socket.emit('decision-join-request', {
                     status: 'rejected',
                     projectId: notif.projectId,
                     projectTitle: notif.projectTitle,
                     ownerName: notif.ownerName || (currentUser ? currentUser.fullName : "Project Owner"),
+                    ownerEmail: notif.ownerEmail,
+                    ownerId: notif.ownerId,
                     applicantName: notif.applicantName,
                     applicantEmail: notif.applicantEmail,
+                    applicantId: notif.applicantId,
                     githubLink: notif.githubLink
                 });
             }
@@ -966,6 +1109,7 @@ if (loginFormModal) {
                 localStorage.setItem('token', authToken);
                 localStorage.setItem('user', JSON.stringify(currentUser));
                 updateUserProfileUI();
+                loadUserNotifications();
 
                 document.querySelector(".app-shell").classList.add("visible");
                 closeAuthModal();
@@ -983,6 +1127,7 @@ if (loginFormModal) {
             localStorage.setItem('token', authToken);
             localStorage.setItem('user', JSON.stringify(currentUser));
             updateUserProfileUI();
+            loadUserNotifications();
             
             document.querySelector(".app-shell").classList.add("visible");
             closeAuthModal();
@@ -1375,6 +1520,7 @@ if (signupForm) {
                 localStorage.setItem('token', authToken);
                 localStorage.setItem('user', JSON.stringify(currentUser));
                 updateUserProfileUI();
+                loadUserNotifications();
 
                 document.querySelector(".app-shell").classList.add("visible");
                 closeAuthModal();
@@ -1392,6 +1538,7 @@ if (signupForm) {
             localStorage.setItem('token', authToken);
             localStorage.setItem('user', JSON.stringify(currentUser));
             updateUserProfileUI();
+            loadUserNotifications();
             
             document.querySelector(".app-shell").classList.add("visible");
             closeAuthModal();
@@ -1657,6 +1804,7 @@ if (profileLogoutBtn) {
         authToken = null;
         currentUser = null;
         updateUserProfileUI();
+        loadUserNotifications();
 
         showToast("Logged out successfully.");
         document.querySelector(".app-shell").classList.remove("visible");
@@ -1879,6 +2027,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Sync profile UI (displays user name / initials or Guest)
     updateUserProfileUI();
+    loadUserNotifications();
 });
 
 // TEAM ROOM CHAT & SOCKET LOGIC
@@ -1899,66 +2048,115 @@ socket.on('receive-message', (data) => {
 });
 
 // Handle incoming join requests in real time for project owners
+// Handle incoming join requests in real time for project owners
 socket.on('receive-join-request', (data) => {
-    const newNotif = {
-        id: data.id || Date.now(),
-        type: "join_request",
-        projectId: data.projectId,
-        projectTitle: data.projectTitle,
-        ownerName: data.ownerName,
-        applicantName: data.applicantName,
-        applicantEmail: data.applicantEmail,
-        githubLink: data.githubLink,
-        pitch: data.pitch || "I have relevant experience and would like to join this project team!",
-        text: `${data.applicantName} requested to join '${data.projectTitle}'`,
-        unread: true,
-        time: "Just now",
-        status: "pending"
-    };
-    mockNotifs.unshift(newNotif);
-    saveNotifications();
-    renderNotifications();
-    showToast(`🔔 New join request for '${data.projectTitle}' from ${data.applicantName}!`);
+    // Check if this client is the applicant who sent it (skip owner card if so)
+    const isApplicant = currentUser && (
+        (data.applicantId && currentUser.id && String(data.applicantId) === String(currentUser.id)) ||
+        (data.applicantEmail && currentUser.email && data.applicantEmail.toLowerCase() === currentUser.email.toLowerCase())
+    );
+    if (isApplicant) return;
+
+    // Check if this client is the owner of the project (or open demo mode)
+    const isOwner = !currentUser || (
+        (data.ownerId && currentUser.id && String(data.ownerId) === String(currentUser.id)) ||
+        (data.ownerEmail && currentUser.email && data.ownerEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+        (data.ownerName && currentUser.fullName && data.ownerName.toLowerCase() === currentUser.fullName.toLowerCase())
+    );
+
+    if (isOwner) {
+        const exists = mockNotifs.some(n => n.id === data.id || (n.projectId === data.projectId && n.applicantEmail === data.applicantEmail && n.type === 'join_request'));
+        if (!exists) {
+            const newNotif = {
+                id: data.id || Date.now(),
+                type: "join_request",
+                projectId: data.projectId,
+                projectTitle: data.projectTitle,
+                ownerName: data.ownerName,
+                ownerEmail: data.ownerEmail,
+                ownerId: data.ownerId,
+                applicantName: data.applicantName,
+                applicantEmail: data.applicantEmail,
+                applicantId: data.applicantId,
+                githubLink: data.githubLink,
+                pitch: data.pitch || "I have relevant experience and would like to join this project team!",
+                text: `${data.applicantName} requested to join '${data.projectTitle}'`,
+                unread: true,
+                time: "Just now",
+                status: "pending"
+            };
+            mockNotifs.unshift(newNotif);
+            saveNotifications();
+            renderNotifications();
+            showToast(`🔔 New join request for '${data.projectTitle}' from ${data.applicantName}!`);
+        }
+    }
 });
 
 // Handle real-time decision (accept or reject) for the applicant
 socket.on('receive-join-decision', (data) => {
-    if (data.status === 'accepted') {
-        const acceptNotif = {
-            id: Date.now(),
-            type: "request_accepted",
-            projectId: data.projectId,
-            projectTitle: data.projectTitle,
-            ownerName: data.ownerName,
-            applicantName: data.applicantName,
-            githubLink: data.githubLink,
-            text: `${data.ownerName || 'Project owner'} accepted your request to join '${data.projectTitle}'!`,
-            unread: true,
-            time: "Just now",
-            status: "accepted"
-        };
-        mockNotifs.unshift(acceptNotif);
-        saveNotifications();
-        renderNotifications();
-        showToast(`🎉 ${data.ownerName || 'Project owner'} accepted your request to join '${data.projectTitle}'!`);
-    } else if (data.status === 'rejected') {
-        const rejectNotif = {
-            id: Date.now(),
-            type: "request_rejected",
-            projectId: data.projectId,
-            projectTitle: data.projectTitle,
-            ownerName: data.ownerName,
-            applicantName: data.applicantName,
-            githubLink: data.githubLink,
-            text: `${data.ownerName || 'Project owner'} rejected your request to join '${data.projectTitle}'.`,
-            unread: true,
-            time: "Just now",
-            status: "rejected"
-        };
-        mockNotifs.unshift(rejectNotif);
-        saveNotifications();
-        renderNotifications();
-        showToast(`❌ ${data.ownerName || 'Project owner'} rejected your request to join '${data.projectTitle}'.`);
+    // Check if this client is the owner who made the decision
+    const isOwner = currentUser && (
+        (data.ownerId && currentUser.id && String(data.ownerId) === String(currentUser.id)) ||
+        (data.ownerEmail && currentUser.email && data.ownerEmail.toLowerCase() === currentUser.email.toLowerCase())
+    );
+
+    // Check if this client is the applicant
+    const isApplicant = !currentUser || (
+        (data.applicantId && currentUser.id && String(data.applicantId) === String(currentUser.id)) ||
+        (data.applicantEmail && currentUser.email && data.applicantEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+        (data.applicantName && currentUser.fullName && data.applicantName.toLowerCase() === currentUser.fullName.toLowerCase())
+    );
+
+    if (isOwner && !isApplicant) {
+        // Project owner already processed the decision on their screen
+        return;
+    }
+
+    if (isApplicant) {
+        // Update any existing request_sent notification in applicant's list
+        const sentNotif = mockNotifs.find(n => (n.projectId === data.projectId || n.projectTitle === data.projectTitle) && (n.type === 'request_sent' || n.type === 'my_application'));
+        if (sentNotif) {
+            sentNotif.status = data.status;
+        }
+
+        if (data.status === 'accepted') {
+            const acceptNotif = {
+                id: Date.now(),
+                type: "request_accepted",
+                projectId: data.projectId,
+                projectTitle: data.projectTitle,
+                ownerName: data.ownerName,
+                applicantName: data.applicantName,
+                githubLink: data.githubLink,
+                text: `${data.ownerName || 'Project owner'} accepted your request to join '${data.projectTitle}'!`,
+                unread: true,
+                time: "Just now",
+                status: "accepted"
+            };
+            mockNotifs.unshift(acceptNotif);
+            saveNotifications();
+            renderNotifications();
+            showToast(`🎉 ${data.ownerName || 'Project owner'} accepted your request to join '${data.projectTitle}'!`);
+        } else if (data.status === 'rejected') {
+            const rejectNotif = {
+                id: Date.now(),
+                type: "request_rejected",
+                projectId: data.projectId,
+                projectTitle: data.projectTitle,
+                ownerName: data.ownerName,
+                applicantName: data.applicantName,
+                githubLink: data.githubLink,
+                text: `${data.ownerName || 'Project owner'} rejected your request to join '${data.projectTitle}'.`,
+                unread: true,
+                time: "Just now",
+                status: "rejected"
+            };
+            mockNotifs.unshift(rejectNotif);
+            saveNotifications();
+            renderNotifications();
+            showToast(`❌ ${data.ownerName || 'Project owner'} rejected your request to join '${data.projectTitle}'.`);
+        }
     }
 });
 

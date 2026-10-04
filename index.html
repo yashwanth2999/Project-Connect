@@ -390,43 +390,118 @@
       <!-- PAGE: COLLABORATION -->
       <div id="page-collaboration" class="page-view">
 
-        <!-- Team Workspace (Group Chat & Meeting) -->
+        <!-- Team Multi-Project Workspace (Workspace Switcher, Chat, File Sharing, Video Meeting) -->
         <section class="card collab-workspace-card">
           <div class="card-inner collab-workspace-inner">
-            <div class="section-header">
-              <div>
-                <h2 class="section-title">Team Workspace: <span id="teamRoomTitle" style="color:#38bdf8;">AI
-                    Project</span></h2>
-                <div class="pill-mini"><span class="dot"></span> Online</div>
+            
+            <!-- Top Workspace Header -->
+            <div class="collab-top-header">
+              <div class="collab-header-left">
+                <div class="collab-header-title-row">
+                  <span class="collab-hub-tag"><i data-lucide="layers" style="width:14px; height:14px;"></i> Active Workspace:</span>
+                  <h2 class="section-title collab-title"><span id="teamRoomTitle" style="color:#38bdf8;">AI Project Workspace</span></h2>
+                </div>
+                <div class="collab-header-badges">
+                  <div class="pill-mini"><span class="dot"></span> Online</div>
+                  <span class="workspace-domain-badge" id="teamDomainBadge">AI / ML</span>
+                  <span class="workspace-role-badge" id="teamRoleBadge">👑 Project Lead</span>
+                </div>
               </div>
-              <button class="pill-btn pill-btn-primary" id="startMeetingBtn">
-                <i data-lucide="video" class="icon"></i> Join Virtual Meeting
-              </button>
+
+              <div class="collab-header-actions">
+                <button class="pill-btn pill-btn-primary" id="startMeetingBtn" title="Launch instant encrypted video conference for this project">
+                  <i data-lucide="video" class="icon"></i> Join Virtual Meeting
+                </button>
+              </div>
             </div>
 
             <div class="team-layout">
-              <!-- Sidebar: Members -->
-              <div class="team-sidebar" id="teamSidebarMembers">
-                <div class="section-label">Team Members</div>
-                <div class="member-item">
-                  <div class="member-avatar" style="background:#38bdf8">U</div>
-                  <div class="member-info">
-                    <div class="member-name">You</div>
-                    <div class="member-role">Team Lead</div>
+              <!-- Left Sidebar 1: My Project Workspaces Switcher -->
+              <div class="team-projects-sidebar">
+                <div class="sidebar-header-row">
+                  <div class="section-label" style="display:flex; align-items:center; gap:6px;">
+                    <i data-lucide="folder-git-2" style="width:14px; height:14px; color:#38bdf8;"></i>
+                    <span>My Project Teams</span>
+                    <span class="project-count-badge" id="myProjectsCount">0</span>
                   </div>
                 </div>
-                <!-- Other members will be populated dynamically -->
+
+                <div class="workspace-switcher-list" id="workspaceSwitcherList">
+                  <!-- Dynamic project cards injected by JS -->
+                </div>
+
+                <div class="workspace-sidebar-footer">
+                  <button class="browse-more-projects-btn" id="browseMoreProjectsBtn" type="button">
+                    <i data-lucide="compass" style="width:13px; height:13px;"></i> Explore More Projects
+                  </button>
+                </div>
               </div>
 
-              <!-- Chat Area -->
+              <!-- Left Sidebar 2: Team Members & Shared Files Tabs -->
+              <div class="team-sidebar">
+                <div class="team-sidebar-tabs">
+                  <button class="team-tab-btn active" id="tabTeamMembersBtn" data-tab="members" type="button">
+                    <i data-lucide="users" style="width:13px; height:13px;"></i> Members
+                  </button>
+                  <button class="team-tab-btn" id="tabTeamFilesBtn" data-tab="files" type="button">
+                    <i data-lucide="folder-archive" style="width:13px; height:13px;"></i> Files
+                    <span class="files-count-badge" id="teamFilesCount">0</span>
+                  </button>
+                </div>
+
+                <!-- Tab Panel 1: Team Members -->
+                <div class="team-sidebar-panel active" id="panelTeamMembers">
+                  <div class="section-label" id="teamMembersCountLabel">Team Members (2)</div>
+                  <div class="members-scroll-list" id="teamSidebarMembers">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+                <!-- Tab Panel 2: Shared Files -->
+                <div class="team-sidebar-panel" id="panelTeamFiles" style="display:none;">
+                  <div class="files-header-row">
+                    <div class="section-label">Shared Resources</div>
+                    <button class="upload-file-mini-btn" id="uploadFileMiniBtn" type="button" title="Upload and share a project file">
+                      <i data-lucide="plus" style="width:12px; height:12px;"></i> Share
+                    </button>
+                  </div>
+                  <div class="files-scroll-list" id="teamFilesList">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Main Chat Area -->
               <div class="team-chat-container">
                 <div class="team-chat-messages" id="teamChatMessages">
                   <div class="date-divider">Team Room Created</div>
-                  <!-- Chat messages will appear here -->
+                  <!-- Chat messages & file cards will appear here -->
                 </div>
+
+                <!-- File Staging Preview Bar (when a file is attached before sending) -->
+                <div class="file-staging-preview" id="fileStagingPreview" style="display:none;">
+                  <div class="staged-file-info">
+                    <span class="staged-file-icon-box" id="stagedFileIconBox">
+                      <i data-lucide="file" class="staged-file-icon"></i>
+                    </span>
+                    <div class="staged-file-details">
+                      <span class="staged-file-name" id="stagedFileName">project_doc.pdf</span>
+                      <span class="staged-file-size" id="stagedFileSize">1.2 MB</span>
+                    </div>
+                  </div>
+                  <button type="button" class="staged-file-remove" id="stagedFileRemove" title="Remove attached file">
+                    <i data-lucide="x" style="width:14px; height:14px;"></i>
+                  </button>
+                </div>
+
+                <!-- Chat Input Controls -->
                 <div class="team-chat-input">
-                  <input type="text" placeholder="Type a message..." id="teamChatInput">
-                  <button id="teamChatSend">
+                  <input type="file" id="teamFileInput" style="display:none;" />
+                  <button type="button" class="team-file-attach-btn" id="teamFileAttachBtn" title="Attach & share a file (PDF, Doc, Image, Code, Zip)">
+                    <i data-lucide="paperclip" class="icon"></i>
+                  </button>
+                  <input type="text" placeholder="Type a message... (Press Enter to send)" id="teamChatInput" autocomplete="off" />
+                  <button id="teamChatSend" type="button" title="Send message (Enter)">
                     <i data-lucide="send" class="icon"></i>
                     <span>Send</span>
                   </button>

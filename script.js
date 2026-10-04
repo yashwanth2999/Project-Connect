@@ -268,81 +268,19 @@ function closeRequestModal() {
     requestModal.classList.add("hidden");
 }
 
-function setupTeamGroup(projectTitle, ownerName, teammateName, teammateGithub) {
-    const teamTitleEl = document.getElementById("teamRoomTitle");
-    if (teamTitleEl) {
-        teamTitleEl.textContent = projectTitle || "AI Project Workspace";
-    }
-
-    // Populate Team Members Sidebar
-    const sidebar = document.getElementById("teamSidebarMembers");
-    if (sidebar) {
-        const ownerInitials = (ownerName || "Owner").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "TL";
-        const teammateInitials = (teammateName || "Teammate").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "TM";
-
-        sidebar.innerHTML = `
-            <div class="section-label">Team Members (2)</div>
-            <div class="member-item">
-                <div class="member-avatar" style="background:#38bdf8">${ownerInitials}</div>
-                <div class="member-info">
-                    <div class="member-name">${ownerName || "Project Lead"}</div>
-                    <div class="member-role" style="color:#38bdf8; font-weight:600;">👑 Project Owner</div>
-                </div>
-            </div>
-            <div class="member-item">
-                <div class="member-avatar" style="background:#22c55e">${teammateInitials}</div>
-                <div class="member-info">
-                    <div class="member-name">${teammateName || "Accepted Teammate"}</div>
-                    <div class="member-role" style="color:#4ade80;">🚀 Teammate</div>
-                    ${teammateGithub ? `
-                        <a href="${teammateGithub}" target="_blank" rel="noopener noreferrer" class="member-github-link">
-                            <i data-lucide="github" style="width:11px; height:11px;"></i> View GitHub
-                        </a>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-    }
-
-    // Announce group creation in Team Chat
-    if (teamChatMessages) {
-        const divider = document.createElement("div");
-        divider.className = "date-divider";
-        divider.textContent = `Group Workspace Created • ${projectTitle}`;
-        teamChatMessages.appendChild(divider);
-
-        const announcement = document.createElement("div");
-        announcement.className = "team-system-announcement";
-        announcement.innerHTML = `
-            <div class="system-announcement-card">
-                <div class="system-announcement-header">
-                    <i data-lucide="party-popper" style="width:16px;height:16px;color:#38bdf8;"></i>
-                    <strong>Team Formed Successfully!</strong>
-                </div>
-                <p><strong>${ownerName || "Project Owner"}</strong> accepted <strong>${teammateName || "Applicant"}</strong> into the project <em>${projectTitle}</em>.</p>
-                ${teammateGithub ? `
-                    <div class="announcement-github">
-                        <i data-lucide="github" style="width:13px;height:13px;"></i>
-                        <span>Teammate GitHub:</span>
-                        <a href="${teammateGithub}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8; text-decoration:underline;">${teammateGithub}</a>
-                    </div>
-                ` : ''}
-                <div class="announcement-hint">A dedicated group workspace is ready. You can brainstorm in real time, coordinate milestones, or click "Join Virtual Meeting" to start a call.</div>
-            </div>
-        `;
-        teamChatMessages.appendChild(announcement);
-        teamChatMessages.scrollTop = teamChatMessages.scrollHeight;
-    }
-
-    // Switch Socket room
-    const newRoomId = 'project-' + (projectTitle || 'workspace').toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40);
-    currentRoomId = newRoomId;
-    if (typeof socket !== 'undefined' && socket && socket.connected) {
-        socket.emit('join-room', currentRoomId);
-    }
+function setupTeamGroup(projectTitle, ownerName, teammateName, teammateGithub, domain, projectId) {
+    const ws = addOrUpdateWorkspace({
+        projectId: projectId,
+        projectTitle: projectTitle,
+        ownerName: ownerName,
+        applicantName: teammateName,
+        applicantGithub: teammateGithub,
+        domain: domain
+    });
 
     // Direct to Collaboration Window
     navigateTo("collaboration");
+    showToast(`🚀 Opened dedicated workspace for '${ws.title}'`);
 
     if (window.lucide) {
         lucide.createIcons();
@@ -1110,6 +1048,7 @@ if (loginFormModal) {
                 localStorage.setItem('user', JSON.stringify(currentUser));
                 updateUserProfileUI();
                 loadUserNotifications();
+                loadUserWorkspaces();
 
                 document.querySelector(".app-shell").classList.add("visible");
                 closeAuthModal();
@@ -1128,6 +1067,7 @@ if (loginFormModal) {
             localStorage.setItem('user', JSON.stringify(currentUser));
             updateUserProfileUI();
             loadUserNotifications();
+            loadUserWorkspaces();
             
             document.querySelector(".app-shell").classList.add("visible");
             closeAuthModal();
@@ -1521,6 +1461,7 @@ if (signupForm) {
                 localStorage.setItem('user', JSON.stringify(currentUser));
                 updateUserProfileUI();
                 loadUserNotifications();
+                loadUserWorkspaces();
 
                 document.querySelector(".app-shell").classList.add("visible");
                 closeAuthModal();
@@ -1539,6 +1480,7 @@ if (signupForm) {
             localStorage.setItem('user', JSON.stringify(currentUser));
             updateUserProfileUI();
             loadUserNotifications();
+            loadUserWorkspaces();
             
             document.querySelector(".app-shell").classList.add("visible");
             closeAuthModal();
@@ -1805,6 +1747,7 @@ if (profileLogoutBtn) {
         currentUser = null;
         updateUserProfileUI();
         loadUserNotifications();
+        loadUserWorkspaces();
 
         showToast("Logged out successfully.");
         document.querySelector(".app-shell").classList.remove("visible");
@@ -2028,6 +1971,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sync profile UI (displays user name / initials or Guest)
     updateUserProfileUI();
     loadUserNotifications();
+    loadUserWorkspaces();
+    initFileAttachmentHandlers();
+    initTeamSidebarTabs();
 });
 
 // TEAM ROOM CHAT & SOCKET LOGIC
@@ -2039,15 +1985,798 @@ const teamChatSend = document.getElementById("teamChatSend");
 const socket = io(SOCKET_URL);
 let currentRoomId = 'global-team-room';
 
+// --- MULTI-PROJECT WORKSPACE SYSTEM ---
+let userWorkspaces = [];
+let activeWorkspaceId = null;
+let stagedFileData = null;
+
+function getWorkspacesStorageKey() {
+    if (currentUser && (currentUser.email || currentUser.id)) {
+        return `pc_workspaces_${currentUser.email || currentUser.id}`;
+    }
+    return 'pc_workspaces_default';
+}
+
+function getDefaultWorkspaces() {
+    return [
+        {
+            id: 'proj-ai-health-diagnostic',
+            title: 'AI Health Diagnostic System',
+            domain: 'ai',
+            domainLabel: 'AI / ML',
+            role: 'owner',
+            roleLabel: '👑 Project Lead',
+            ownerName: currentUser ? currentUser.fullName : 'Project Lead',
+            ownerEmail: currentUser ? currentUser.email : 'owner@college.edu',
+            members: [
+                {
+                    name: currentUser ? currentUser.fullName : 'You',
+                    role: '👑 Project Owner',
+                    initials: currentUser ? currentUser.fullName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : 'ME',
+                    color: '#38bdf8',
+                    isOwner: true,
+                    github: ''
+                },
+                {
+                    name: 'Rahul Sharma',
+                    role: '🚀 Teammate',
+                    initials: 'RS',
+                    color: '#22c55e',
+                    isOwner: false,
+                    github: 'https://github.com/rahul-sharma'
+                }
+            ],
+            messages: [
+                {
+                    id: 'm-1',
+                    author: 'System',
+                    text: 'Workspace created for AI Health Diagnostic System.',
+                    time: '10:00 AM',
+                    isMe: false,
+                    isSystem: true
+                },
+                {
+                    id: 'm-2',
+                    author: 'Rahul Sharma',
+                    text: 'Hey team! I compiled our initial dataset architecture and CNN model design.',
+                    time: '10:05 AM',
+                    isMe: false,
+                    file: {
+                        name: 'health_dataset_schema.pdf',
+                        size: '520 KB',
+                        type: 'application/pdf',
+                        uploader: 'Rahul Sharma',
+                        time: '10:05 AM',
+                        dataUrl: null
+                    }
+                }
+            ],
+            files: [
+                {
+                    id: 'f-1',
+                    name: 'health_dataset_schema.pdf',
+                    size: '520 KB',
+                    type: 'application/pdf',
+                    uploader: 'Rahul Sharma',
+                    time: '10:05 AM',
+                    dataUrl: null
+                }
+            ],
+            unreadCount: 0
+        },
+        {
+            id: 'proj-smart-campus-transit',
+            title: 'Smart Campus Transit Tracker',
+            domain: 'web',
+            domainLabel: 'Web Development',
+            role: 'member',
+            roleLabel: '🚀 Teammate',
+            ownerName: 'David Kim',
+            ownerEmail: 'david@college.edu',
+            members: [
+                {
+                    name: 'David Kim',
+                    role: '👑 Project Owner',
+                    initials: 'DK',
+                    color: '#38bdf8',
+                    isOwner: true,
+                    github: 'https://github.com/davidkim'
+                },
+                {
+                    name: currentUser ? currentUser.fullName : 'You',
+                    role: '🚀 Teammate',
+                    initials: currentUser ? currentUser.fullName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : 'ME',
+                    color: '#a855f7',
+                    isOwner: false,
+                    github: ''
+                }
+            ],
+            messages: [
+                {
+                    id: 'm-3',
+                    author: 'System',
+                    text: 'Workspace created for Smart Campus Transit Tracker.',
+                    time: 'Yesterday',
+                    isMe: false,
+                    isSystem: true
+                },
+                {
+                    id: 'm-4',
+                    author: 'David Kim',
+                    text: 'Welcome to the team! Excited to build the real-time bus tracking system together.',
+                    time: 'Yesterday',
+                    isMe: false
+                }
+            ],
+            files: [],
+            unreadCount: 0
+        }
+    ];
+}
+
+function loadUserWorkspaces() {
+    try {
+        const key = getWorkspacesStorageKey();
+        const saved = localStorage.getItem(key);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                userWorkspaces = parsed;
+            } else {
+                userWorkspaces = getDefaultWorkspaces();
+            }
+        } else {
+            userWorkspaces = getDefaultWorkspaces();
+        }
+    } catch (e) {
+        console.warn('Could not load workspaces:', e);
+        userWorkspaces = getDefaultWorkspaces();
+    }
+
+    if (!activeWorkspaceId || !userWorkspaces.some(w => w.id === activeWorkspaceId)) {
+        activeWorkspaceId = userWorkspaces[0] ? userWorkspaces[0].id : null;
+    }
+
+    // Join all socket rooms for this client
+    if (typeof socket !== 'undefined' && socket && socket.connected) {
+        userWorkspaces.forEach(w => {
+            socket.emit('join-room', w.id);
+        });
+    }
+
+    renderWorkspaceSwitcher();
+    renderActiveWorkspace();
+}
+
+function saveUserWorkspaces() {
+    try {
+        const key = getWorkspacesStorageKey();
+        localStorage.setItem(key, JSON.stringify(userWorkspaces));
+    } catch (e) {
+        console.warn('Could not save workspaces:', e);
+    }
+}
+
+function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function getFileIconName(fileType, fileName) {
+    const ext = (fileName || '').split('.').pop().toLowerCase();
+    if ((fileType && fileType.includes('image')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) {
+        return 'image';
+    }
+    if ((fileType && fileType.includes('pdf')) || ext === 'pdf') {
+        return 'file-text';
+    }
+    if (['zip', 'rar', 'tar', 'gz', '7z'].includes(ext)) {
+        return 'folder-archive';
+    }
+    if (['js', 'ts', 'py', 'java', 'cpp', 'html', 'css', 'json', 'sql'].includes(ext)) {
+        return 'code';
+    }
+    return 'file';
+}
+
+function addOrUpdateWorkspace(params) {
+    const {
+        projectId,
+        projectTitle,
+        ownerName,
+        ownerEmail,
+        ownerId,
+        applicantName,
+        applicantEmail,
+        applicantId,
+        applicantGithub,
+        domain
+    } = params;
+
+    const title = projectTitle || "Project Workspace";
+    const workspaceId = 'proj-' + (projectId ? String(projectId).replace(/[^a-zA-Z0-9-]/g, '') : title.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40));
+
+    let existing = userWorkspaces.find(w => w.id === workspaceId || w.title.toLowerCase() === title.toLowerCase());
+
+    const isCurrentOwner = currentUser && (
+        (ownerEmail && currentUser.email && ownerEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+        (ownerId && currentUser.id && String(ownerId) === String(currentUser.id)) ||
+        (ownerName && currentUser.fullName && ownerName.toLowerCase() === currentUser.fullName.toLowerCase())
+    );
+
+    const ownerInitials = (ownerName || "Owner").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "TL";
+    const applicantInitials = (applicantName || "Teammate").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "TM";
+
+    if (!existing) {
+        existing = {
+            id: workspaceId,
+            title: title,
+            domain: domain || 'ai',
+            domainLabel: (domain || 'AI / ML').toUpperCase(),
+            role: isCurrentOwner ? 'owner' : 'member',
+            roleLabel: isCurrentOwner ? '👑 Project Lead' : '🚀 Teammate',
+            ownerName: ownerName || "Project Lead",
+            ownerEmail: ownerEmail || null,
+            members: [
+                {
+                    name: ownerName || "Project Owner",
+                    role: "👑 Project Owner",
+                    initials: ownerInitials,
+                    color: "#38bdf8",
+                    isOwner: true,
+                    github: ""
+                },
+                {
+                    name: applicantName || "Teammate",
+                    role: "🚀 Teammate",
+                    initials: applicantInitials,
+                    color: "#22c55e",
+                    isOwner: false,
+                    github: applicantGithub || ""
+                }
+            ],
+            messages: [
+                {
+                    id: 'sys-' + Date.now(),
+                    author: 'System',
+                    text: `Team formed successfully for '${title}'. Dedicated workspace created.`,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    isSystem: true,
+                    isMe: false
+                }
+            ],
+            files: [],
+            unreadCount: 0
+        };
+        userWorkspaces.unshift(existing);
+    } else {
+        // Ensure teammate is in members list
+        if (applicantName && !existing.members.some(m => m.name.toLowerCase() === applicantName.toLowerCase())) {
+            existing.members.push({
+                name: applicantName,
+                role: "🚀 Teammate",
+                initials: applicantInitials,
+                color: "#22c55e",
+                isOwner: false,
+                github: applicantGithub || ""
+            });
+            existing.messages.push({
+                id: 'sys-' + Date.now(),
+                author: 'System',
+                text: `${applicantName} joined the workspace!`,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                isSystem: true,
+                isMe: false
+            });
+        }
+    }
+
+    activeWorkspaceId = existing.id;
+    currentRoomId = existing.id;
+
+    if (typeof socket !== 'undefined' && socket && socket.connected) {
+        socket.emit('join-room', existing.id);
+    }
+
+    saveUserWorkspaces();
+    renderWorkspaceSwitcher();
+    renderActiveWorkspace();
+    return existing;
+}
+
+function renderWorkspaceSwitcher() {
+    const list = document.getElementById("workspaceSwitcherList");
+    const countEl = document.getElementById("myProjectsCount");
+    if (!list) return;
+
+    if (countEl) countEl.textContent = userWorkspaces.length;
+
+    list.innerHTML = "";
+    if (userWorkspaces.length === 0) {
+        list.innerHTML = `<div style="font-size:11px; color:#64748b; text-align:center; padding:16px 8px;">No projects joined yet. Request to join or post a project!</div>`;
+        return;
+    }
+
+    userWorkspaces.forEach(ws => {
+        const item = document.createElement("div");
+        item.className = `workspace-card-item ${ws.id === activeWorkspaceId ? 'active' : ''}`;
+        item.setAttribute("data-id", ws.id);
+
+        item.innerHTML = `
+            <div class="workspace-card-header">
+                <div class="workspace-card-title" title="${ws.title}">${ws.title}</div>
+                ${ws.unreadCount > 0 ? `<span class="workspace-unread-badge">${ws.unreadCount}</span>` : ''}
+            </div>
+            <div class="workspace-card-meta">
+                <span class="workspace-card-role-chip">${ws.role === 'owner' ? '👑 Lead' : '🚀 Member'}</span>
+                <span>•</span>
+                <span>${(ws.members || []).length} members</span>
+                <span>•</span>
+                <span>${(ws.files || []).length} files</span>
+            </div>
+        `;
+
+        item.addEventListener("click", () => {
+            if (activeWorkspaceId !== ws.id) {
+                ws.unreadCount = 0;
+                activeWorkspaceId = ws.id;
+                currentRoomId = ws.id;
+                if (typeof socket !== 'undefined' && socket && socket.connected) {
+                    socket.emit('join-room', ws.id);
+                }
+                saveUserWorkspaces();
+                renderWorkspaceSwitcher();
+                renderActiveWorkspace();
+            }
+        });
+
+        list.appendChild(item);
+    });
+}
+
+function renderActiveWorkspace() {
+    const ws = userWorkspaces.find(w => w.id === activeWorkspaceId) || userWorkspaces[0];
+    if (!ws) return;
+    activeWorkspaceId = ws.id;
+    currentRoomId = ws.id;
+
+    // Header updates
+    const titleEl = document.getElementById("teamRoomTitle");
+    if (titleEl) titleEl.textContent = ws.title;
+
+    const domainBadge = document.getElementById("teamDomainBadge");
+    if (domainBadge) domainBadge.textContent = (ws.domain || 'AI / ML').toUpperCase();
+
+    const roleBadge = document.getElementById("teamRoleBadge");
+    if (roleBadge) roleBadge.textContent = ws.role === 'owner' ? '👑 Project Lead' : '🚀 Teammate';
+
+    // Input placeholder
+    const chatInput = document.getElementById("teamChatInput");
+    if (chatInput) chatInput.placeholder = `Type a message in ${ws.title}... (Press Enter to send)`;
+
+    renderActiveWorkspaceMembers(ws);
+    renderActiveWorkspaceFiles(ws);
+    renderActiveWorkspaceChat(ws);
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function renderActiveWorkspaceMembers(ws) {
+    const membersList = document.getElementById("teamSidebarMembers");
+    const countLabel = document.getElementById("teamMembersCountLabel");
+    if (!membersList) return;
+
+    const members = ws.members || [];
+    if (countLabel) countLabel.textContent = `Team Members (${members.length})`;
+
+    membersList.innerHTML = "";
+    members.forEach(m => {
+        const div = document.createElement("div");
+        div.className = "member-item";
+        div.innerHTML = `
+            <div class="member-avatar" style="background:${m.color || '#38bdf8'}">${m.initials || 'U'}</div>
+            <div class="member-info">
+                <div class="member-name">${m.name}</div>
+                <div class="member-role" style="${m.isOwner ? 'color:#38bdf8; font-weight:600;' : 'color:#4ade80;'}">${m.role}</div>
+                ${m.github ? `
+                    <a href="${m.github}" target="_blank" rel="noopener noreferrer" class="member-github-link">
+                        <i data-lucide="github" style="width:11px; height:11px;"></i> GitHub
+                    </a>
+                ` : ''}
+            </div>
+        `;
+        membersList.appendChild(div);
+    });
+}
+
+function renderActiveWorkspaceFiles(ws) {
+    const filesList = document.getElementById("teamFilesList");
+    const countBadge = document.getElementById("teamFilesCount");
+    if (!filesList) return;
+
+    const files = ws.files || [];
+    if (countBadge) countBadge.textContent = files.length;
+
+    filesList.innerHTML = "";
+    if (files.length === 0) {
+        filesList.innerHTML = `
+            <div class="files-empty-notice">
+                <i data-lucide="folder-open" style="width:22px; height:22px; color:#64748b; margin-bottom:6px; display:inline-block;"></i>
+                <div>No shared files yet.</div>
+                <div style="font-size:10px; color:#64748b; margin-top:2px;">Click "+ Share" or attach in chat!</div>
+            </div>
+        `;
+        return;
+    }
+
+    files.forEach(f => {
+        const div = document.createElement("div");
+        div.className = "shared-file-item";
+        const iconName = getFileIconName(f.type, f.name);
+        div.innerHTML = `
+            <div class="shared-file-icon-box">
+                <i data-lucide="${iconName}" style="width:15px; height:15px;"></i>
+            </div>
+            <div class="shared-file-details">
+                <div class="shared-file-name" title="${f.name}">${f.name}</div>
+                <div class="shared-file-sub">${f.size || 'File'} • ${f.uploader || 'Teammate'}</div>
+            </div>
+            ${f.dataUrl ? `
+                <a href="${f.dataUrl}" download="${f.name}" class="shared-file-download-btn" title="Download ${f.name}">
+                    <i data-lucide="download" style="width:14px; height:14px;"></i>
+                </a>
+            ` : `
+                <button class="shared-file-download-btn" onclick="showToast('Downloading demo file: ${f.name}')" title="Download">
+                    <i data-lucide="download" style="width:14px; height:14px;"></i>
+                </button>
+            `}
+        `;
+        filesList.appendChild(div);
+    });
+}
+
+function renderActiveWorkspaceChat(ws) {
+    const chatContainer = document.getElementById("teamChatMessages");
+    if (!chatContainer) return;
+
+    chatContainer.innerHTML = `
+        <div class="date-divider">Workspace Initialized • ${ws.title}</div>
+    `;
+
+    (ws.messages || []).forEach(msg => {
+        if (msg.isSystem) {
+            const announcement = document.createElement("div");
+            announcement.className = "team-system-announcement";
+            announcement.innerHTML = `
+                <div class="system-announcement-card">
+                    <div class="system-announcement-header">
+                        <i data-lucide="party-popper" style="width:16px;height:16px;color:#38bdf8;"></i>
+                        <strong>Workspace Ready!</strong>
+                    </div>
+                    <p>${msg.text}</p>
+                    <div class="announcement-hint">Brainstorm in real time, share project documents & code snippets, or start a video meeting.</div>
+                </div>
+            `;
+            chatContainer.appendChild(announcement);
+        } else {
+            addTeamMessageToDOM(msg, false);
+        }
+    });
+
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function addTeamMessageToDOM(msg, animate = true) {
+    const chatContainer = document.getElementById("teamChatMessages");
+    if (!chatContainer) return;
+
+    const msgDiv = document.createElement("div");
+    msgDiv.className = "team-msg " + (msg.isMe ? "me" : "member");
+
+    // Avatar
+    const avatar = document.createElement("div");
+    avatar.className = "msg-avatar";
+    avatar.textContent = msg.isMe ? "ME" : (msg.author || "T").charAt(0).toUpperCase();
+    if (!msg.isMe) avatar.style.background = "#22c55e";
+
+    // Bubble
+    const bubble = document.createElement("div");
+    bubble.className = "msg-bubble";
+
+    if (!msg.isMe) {
+        const authorDiv = document.createElement("div");
+        authorDiv.className = "msg-author";
+        authorDiv.textContent = msg.author || "Teammate";
+        bubble.appendChild(authorDiv);
+    }
+
+    if (msg.text) {
+        const textSpan = document.createElement("div");
+        textSpan.style.lineHeight = "1.5";
+        textSpan.textContent = msg.text;
+        bubble.appendChild(textSpan);
+    }
+
+    // File Attachment inside bubble
+    if (msg.file) {
+        const fileCard = document.createElement("div");
+        fileCard.className = "chat-file-attachment";
+        const iconName = getFileIconName(msg.file.type, msg.file.name);
+        const isImage = msg.file.type && msg.file.type.includes('image') && msg.file.dataUrl;
+
+        fileCard.innerHTML = `
+            <div class="chat-file-icon-box">
+                <i data-lucide="${iconName}" style="width:16px; height:16px;"></i>
+            </div>
+            <div class="chat-file-details">
+                <div class="chat-file-name" title="${msg.file.name}">${msg.file.name}</div>
+                <div class="chat-file-meta">${msg.file.size || 'Shared File'}</div>
+            </div>
+            ${msg.file.dataUrl ? `
+                <a href="${msg.file.dataUrl}" download="${msg.file.name}" class="chat-file-download-btn">
+                    <i data-lucide="download" style="width:12px; height:12px;"></i> Download
+                </a>
+            ` : `
+                <button class="chat-file-download-btn" onclick="showToast('Downloading demo file: ${msg.file.name}')">
+                    <i data-lucide="download" style="width:12px; height:12px;"></i> Download
+                </button>
+            `}
+        `;
+
+        if (isImage) {
+            const imgThumb = document.createElement("img");
+            imgThumb.src = msg.file.dataUrl;
+            imgThumb.className = "chat-image-preview";
+            imgThumb.alt = msg.file.name;
+            bubble.appendChild(imgThumb);
+        }
+
+        bubble.appendChild(fileCard);
+    }
+
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "msg-time";
+    timeSpan.textContent = msg.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    bubble.appendChild(timeSpan);
+
+    msgDiv.appendChild(avatar);
+    msgDiv.appendChild(bubble);
+
+    chatContainer.appendChild(msgDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function sendActiveTeamMessage() {
+    const input = document.getElementById("teamChatInput");
+    const txt = input ? input.value.trim() : "";
+
+    if (!txt && !stagedFileData) return;
+
+    const ws = userWorkspaces.find(w => w.id === activeWorkspaceId) || userWorkspaces[0];
+    if (!ws) return;
+
+    const authorInfo = currentUser ? currentUser.fullName : "You";
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const newMsg = {
+        id: 'msg-' + Date.now(),
+        author: authorInfo,
+        text: txt,
+        file: stagedFileData ? { ...stagedFileData } : null,
+        time: timeStr,
+        isMe: true
+    };
+
+    ws.messages.push(newMsg);
+
+    if (stagedFileData) {
+        ws.files.push({
+            id: 'file-' + Date.now(),
+            ...stagedFileData
+        });
+        renderActiveWorkspaceFiles(ws);
+    }
+
+    // Add to DOM
+    addTeamMessageToDOM(newMsg);
+
+    // Broadcast over Socket
+    if (typeof socket !== 'undefined' && socket && socket.connected) {
+        socket.emit('send-message', {
+            roomId: ws.id,
+            projectId: ws.id,
+            projectTitle: ws.title,
+            message: txt,
+            file: stagedFileData ? { ...stagedFileData } : null,
+            author: authorInfo,
+            time: timeStr
+        });
+    }
+
+    // Reset input and staged file preview
+    if (input) input.value = "";
+    clearStagedFilePreview();
+    saveUserWorkspaces();
+    renderWorkspaceSwitcher();
+}
+
+function initFileAttachmentHandlers() {
+    const fileInput = document.getElementById("teamFileInput");
+    const attachBtn = document.getElementById("teamFileAttachBtn");
+    const uploadMiniBtn = document.getElementById("uploadFileMiniBtn");
+    const removeBtn = document.getElementById("stagedFileRemove");
+
+    if (attachBtn && fileInput) {
+        attachBtn.addEventListener("click", () => fileInput.click());
+    }
+    if (uploadMiniBtn && fileInput) {
+        uploadMiniBtn.addEventListener("click", () => fileInput.click());
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (file.size > 8 * 1024 * 1024) {
+                showToast("File is too large (max 8MB). Please choose a smaller file.");
+                fileInput.value = "";
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                stagedFileData = {
+                    name: file.name,
+                    size: formatFileSize(file.size),
+                    type: file.type || file.name.split('.').pop(),
+                    dataUrl: evt.target.result,
+                    uploader: currentUser ? currentUser.fullName : "You",
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                };
+                showStagedFilePreview(stagedFileData);
+                fileInput.value = "";
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    if (removeBtn) {
+        removeBtn.addEventListener("click", clearStagedFilePreview);
+    }
+}
+
+function showStagedFilePreview(fileData) {
+    const preview = document.getElementById("fileStagingPreview");
+    const nameEl = document.getElementById("stagedFileName");
+    const sizeEl = document.getElementById("stagedFileSize");
+    const iconBox = document.getElementById("stagedFileIconBox");
+
+    if (!preview) return;
+
+    if (nameEl) nameEl.textContent = fileData.name;
+    if (sizeEl) sizeEl.textContent = fileData.size;
+    if (iconBox) {
+        const iconName = getFileIconName(fileData.type, fileData.name);
+        iconBox.innerHTML = `<i data-lucide="${iconName}" class="staged-file-icon"></i>`;
+    }
+
+    preview.style.display = "flex";
+    if (window.lucide) lucide.createIcons();
+}
+
+function clearStagedFilePreview() {
+    stagedFileData = null;
+    const preview = document.getElementById("fileStagingPreview");
+    if (preview) preview.style.display = "none";
+    const fileInput = document.getElementById("teamFileInput");
+    if (fileInput) fileInput.value = "";
+}
+
+function initTeamSidebarTabs() {
+    const tabMembersBtn = document.getElementById("tabTeamMembersBtn");
+    const tabFilesBtn = document.getElementById("tabTeamFilesBtn");
+    const panelMembers = document.getElementById("panelTeamMembers");
+    const panelFiles = document.getElementById("panelTeamFiles");
+
+    if (tabMembersBtn && tabFilesBtn && panelMembers && panelFiles) {
+        tabMembersBtn.addEventListener("click", () => {
+            tabMembersBtn.classList.add("active");
+            tabFilesBtn.classList.remove("active");
+            panelMembers.style.display = "flex";
+            panelFiles.style.display = "none";
+        });
+
+        tabFilesBtn.addEventListener("click", () => {
+            tabFilesBtn.classList.add("active");
+            tabMembersBtn.classList.remove("active");
+            panelFiles.style.display = "flex";
+            panelMembers.style.display = "none";
+        });
+    }
+
+    const browseMoreBtn = document.getElementById("browseMoreProjectsBtn");
+    if (browseMoreBtn) {
+        browseMoreBtn.addEventListener("click", () => {
+            navigateTo("home");
+        });
+    }
+}
+
+// Attach Send & Keyboard Enter handlers
+if (teamChatSend) {
+    teamChatSend.addEventListener("click", sendActiveTeamMessage);
+}
+if (teamChatInput) {
+    teamChatInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendActiveTeamMessage();
+        }
+    });
+}
+
 socket.on('connect', () => {
-    socket.emit('join-room', currentRoomId);
+    if (userWorkspaces && userWorkspaces.length > 0) {
+        userWorkspaces.forEach(w => socket.emit('join-room', w.id));
+    } else {
+        socket.emit('join-room', currentRoomId);
+    }
 });
 
+// Handle incoming messages in real time across ALL workspaces
 socket.on('receive-message', (data) => {
-    addTeamMessage(data.message, false, data.author);
+    let targetWs = userWorkspaces.find(w => w.id === data.roomId || w.id === data.projectId || w.title.toLowerCase() === (data.projectTitle || '').toLowerCase());
+
+    if (!targetWs && data.projectTitle) {
+        targetWs = addOrUpdateWorkspace({
+            projectId: data.projectId,
+            projectTitle: data.projectTitle,
+            ownerName: data.author || 'Teammate',
+            applicantName: currentUser ? currentUser.fullName : 'You'
+        });
+    }
+
+    if (targetWs) {
+        const newMsg = {
+            id: 'msg-' + Date.now(),
+            author: data.author || 'Teammate',
+            text: data.message || '',
+            file: data.file || null,
+            time: data.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isMe: false
+        };
+
+        targetWs.messages.push(newMsg);
+
+        if (data.file) {
+            targetWs.files.push({
+                id: 'file-' + Date.now(),
+                ...data.file
+            });
+        }
+
+        const isCollabActive = document.getElementById("page-collaboration") && document.getElementById("page-collaboration").classList.contains("active");
+
+        if (targetWs.id === activeWorkspaceId && isCollabActive) {
+            addTeamMessageToDOM(newMsg);
+            if (data.file) renderActiveWorkspaceFiles(targetWs);
+        } else {
+            // Teammate sent a message in another team workspace or user is on another page
+            targetWs.unreadCount = (targetWs.unreadCount || 0) + 1;
+            renderWorkspaceSwitcher();
+            showToast(`💬 [${targetWs.title}] ${data.author}: ${data.message || (data.file ? 'Shared ' + data.file.name : 'New message')}`);
+        }
+
+        saveUserWorkspaces();
+    }
 });
 
-// Handle incoming join requests in real time for project owners
 // Handle incoming join requests in real time for project owners
 socket.on('receive-join-request', (data) => {
     // Check if this client is the applicant who sent it (skip owner card if so)
@@ -2121,6 +2850,15 @@ socket.on('receive-join-decision', (data) => {
         }
 
         if (data.status === 'accepted') {
+            // Auto create dedicated workspace for accepted applicant
+            addOrUpdateWorkspace({
+                projectId: data.projectId,
+                projectTitle: data.projectTitle,
+                ownerName: data.ownerName,
+                applicantName: data.applicantName || (currentUser ? currentUser.fullName : 'You'),
+                applicantGithub: data.githubLink || ''
+            });
+
             const acceptNotif = {
                 id: Date.now(),
                 type: "request_accepted",
@@ -2160,57 +2898,6 @@ socket.on('receive-join-decision', (data) => {
     }
 });
 
-function addTeamMessage(text, isMe, authorName) {
-    if (!teamChatMessages) return;
-    const msgDiv = document.createElement("div");
-    msgDiv.className = "team-msg " + (isMe ? "me" : "member");
-
-    // Avatar
-    const avatar = document.createElement("div");
-    avatar.className = "msg-avatar";
-    avatar.textContent = isMe ? "U" : authorName.charAt(0).toUpperCase();
-    if (!isMe) avatar.style.background = "#22c55e"; // distinct color for new messages
-
-    // Bubble
-    const bubble = document.createElement("div");
-    bubble.className = "msg-bubble";
-
-    if (!isMe) {
-        const authorDiv = document.createElement("div");
-        authorDiv.className = "msg-author";
-        authorDiv.textContent = authorName;
-        bubble.appendChild(authorDiv);
-    }
-
-    bubble.appendChild(document.createTextNode(text));
-
-    msgDiv.appendChild(avatar);
-    msgDiv.appendChild(bubble);
-
-    teamChatMessages.appendChild(msgDiv);
-    teamChatMessages.scrollTop = teamChatMessages.scrollHeight;
-}
-
-if (teamChatSend) {
-    teamChatSend.addEventListener("click", () => {
-        const txt = teamChatInput.value.trim();
-        if (!txt) return;
-
-        let authorInfo = currentUser ? currentUser.fullName : "Anonymous";
-
-        // Add locally
-        addTeamMessage(txt, true, authorInfo);
-        teamChatInput.value = "";
-
-        // Broadcast
-        socket.emit('send-message', {
-            roomId: currentRoomId,
-            message: txt,
-            author: authorInfo
-        });
-    });
-}
-
 // ── JITSI MEET — ZERO API KEY REQUIRED ─────────────────────────────────
 const startMeetingBtn      = document.getElementById("startMeetingBtn");
 const meetingOverlay       = document.getElementById("meetingOverlay");
@@ -2223,9 +2910,11 @@ const meetingRoomLabel     = document.getElementById("meetingRoomLabel");
 
 let jitsiApi = null;
 
-// Auto-generate a stable room name based on the project room
+// Auto-generate a stable room name based on the active project workspace
 function getJitsiRoomName() {
-    return ('ProjectConnect-' + currentRoomId)
+    const ws = userWorkspaces.find(w => w.id === activeWorkspaceId) || userWorkspaces[0];
+    const base = ws ? ws.title : currentRoomId;
+    return ('ProjectConnect-' + base)
         .replace(/[^a-zA-Z0-9-]/g, '-')
         .slice(0, 60);
 }

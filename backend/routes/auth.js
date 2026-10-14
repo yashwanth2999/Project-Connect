@@ -35,7 +35,7 @@ async function dispatchEmail({ toEmail, userName, otp }) {
     // Provider 1: Brevo REST API (over HTTPS port 443)
     if (process.env.BREVO_API_KEY) {
         try {
-            const senderEmail = process.env.EMAIL_USER || 'noreply@projectconnect.com';
+            const senderEmail = process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@projectconnect.com';
             const response = await fetch('https://api.brevo.com/v3/smtp/email', {
                 method: 'POST',
                 headers: {

@@ -1267,7 +1267,7 @@ if (forgotStep1Form) {
         if (!resetEmail) return;
 
         sendOtpBtn.disabled = true;
-        sendOtpBtn.innerHTML = 'Sending OTP...';
+        sendOtpBtn.innerHTML = '<span class="typing-dot" style="display:inline-block; margin-right:4px;"></span> Sending OTP...';
 
         try {
             const res = await fetch(`${BASE_URL}/auth/send-otp`, {
@@ -1278,14 +1278,20 @@ if (forgotStep1Form) {
             const data = await res.json();
 
             if (res.ok) {
-                showToast(data.message || "OTP sent to your email!");
-                if (otpSentToLabel) otpSentToLabel.textContent = `OTP sent to ${resetEmail}`;
+                showToast(data.message || "OTP generated!");
+                if (otpSentToLabel) {
+                    if (data.emailSent) {
+                        otpSentToLabel.textContent = `OTP sent to ${resetEmail} (check inbox & spam)`;
+                    } else {
+                        otpSentToLabel.textContent = `Security code ready for ${resetEmail}`;
+                    }
+                }
                 forgotStep1Form.classList.add("hidden");
                 forgotStep2Form.classList.remove("hidden");
 
                 if (data.devOtp && devOtpBanner) {
                     devOtpBanner.innerHTML = `
-                        <div style="font-weight:600; color:#38bdf8; font-size:12px;">🔑 Security OTP:</div>
+                        <div style="font-weight:600; color:#38bdf8; font-size:12px;">🔑 Security Verification Code:</div>
                         <div class="dev-otp-code" id="devOtpClickCode" title="Click to auto-fill">${data.devOtp}</div>
                         <div style="font-size:10px; color:#94a3b8;">(Click the code above to auto-fill)</div>
                     `;
@@ -1302,11 +1308,13 @@ if (forgotStep1Form) {
             } else {
                 otpStep1Error.textContent = data.message || "Failed to send OTP.";
                 otpStep1Error.style.display = "block";
+                showToast(data.message || "Failed to send OTP", true);
             }
         } catch (err) {
             console.error(err);
             otpStep1Error.textContent = "Network error connecting to backend.";
             otpStep1Error.style.display = "block";
+            showToast("Network error connecting to backend", true);
         } finally {
             sendOtpBtn.disabled = false;
             sendOtpBtn.innerHTML = '<i data-lucide="send" style="width:14px;height:14px;"></i> Send OTP';
@@ -1330,10 +1338,10 @@ if (resendOtpBtn) {
             });
             const data = await res.json();
             if (res.ok) {
-                showToast("New OTP sent!");
+                showToast(data.message || "New OTP generated!");
                 if (data.devOtp && devOtpBanner) {
                     devOtpBanner.innerHTML = `
-                        <div style="font-weight:600; color:#38bdf8; font-size:12px;">🔑 Security OTP:</div>
+                        <div style="font-weight:600; color:#38bdf8; font-size:12px;">🔑 Security Verification Code:</div>
                         <div class="dev-otp-code" id="devOtpClickCode" title="Click to auto-fill">${data.devOtp}</div>
                         <div style="font-size:10px; color:#94a3b8;">(Click the code above to auto-fill)</div>
                     `;

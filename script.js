@@ -1278,29 +1278,11 @@ if (forgotStep1Form) {
             const data = await res.json();
 
             if (res.ok) {
-                showToast(data.message || "OTP generated!");
-                if (otpSentToLabel) {
-                    if (data.emailSent) {
-                        otpSentToLabel.textContent = `OTP sent to ${resetEmail} (check inbox & spam)`;
-                    } else {
-                        otpSentToLabel.textContent = `Security code ready for ${resetEmail}`;
-                    }
-                }
+                showToast(data.message || "OTP sent to your email! Please check inbox and spam.");
+                if (otpSentToLabel) otpSentToLabel.textContent = `OTP sent to ${resetEmail} (check inbox & spam)`;
                 forgotStep1Form.classList.add("hidden");
                 forgotStep2Form.classList.remove("hidden");
-
-                if (data.devOtp && devOtpBanner) {
-                    devOtpBanner.innerHTML = `
-                        <div style="font-weight:600; color:#38bdf8; font-size:12px;">🔑 Security Verification Code:</div>
-                        <div class="dev-otp-code" id="devOtpClickCode" title="Click to auto-fill">${data.devOtp}</div>
-                        <div style="font-size:10px; color:#94a3b8;">(Click the code above to auto-fill)</div>
-                    `;
-                    devOtpBanner.style.display = "block";
-                    const clickCode = document.getElementById("devOtpClickCode");
-                    if (clickCode) {
-                        clickCode.addEventListener("click", () => fillOtp(data.devOtp));
-                    }
-                }
+                if (devOtpBanner) devOtpBanner.style.display = "none";
 
                 startOtpTimer();
                 if (otpDigitInputs[0]) otpDigitInputs[0].focus();
@@ -1338,19 +1320,8 @@ if (resendOtpBtn) {
             });
             const data = await res.json();
             if (res.ok) {
-                showToast(data.message || "New OTP generated!");
-                if (data.devOtp && devOtpBanner) {
-                    devOtpBanner.innerHTML = `
-                        <div style="font-weight:600; color:#38bdf8; font-size:12px;">🔑 Security Verification Code:</div>
-                        <div class="dev-otp-code" id="devOtpClickCode" title="Click to auto-fill">${data.devOtp}</div>
-                        <div style="font-size:10px; color:#94a3b8;">(Click the code above to auto-fill)</div>
-                    `;
-                    devOtpBanner.style.display = "block";
-                    const clickCode = document.getElementById("devOtpClickCode");
-                    if (clickCode) {
-                        clickCode.addEventListener("click", () => fillOtp(data.devOtp));
-                    }
-                }
+                showToast(data.message || "New OTP sent to your email!");
+                if (devOtpBanner) devOtpBanner.style.display = "none";
                 startOtpTimer();
                 otpDigitInputs.forEach(i => { i.value = ""; i.classList.remove("filled"); });
                 if (otpDigitInputs[0]) otpDigitInputs[0].focus();

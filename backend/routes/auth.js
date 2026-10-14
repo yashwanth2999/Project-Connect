@@ -273,13 +273,12 @@ router.post('/send-otp', async (req, res) => {
             });
         }
 
-        // Fallback: When direct SMTP ports (25, 465, 587) are restricted by Render's firewall,
-        // provide the secure verification code directly so the user is NEVER blocked or left waiting!
-        console.log(`\n🔑 [Render Free Tier Fallback] Outbound SMTP blocked. Providing direct OTP for ${cleanEmail}: ${otp}\n`);
-        return res.json({
-            message: 'OTP generated! (Cloud firewall restricted direct SMTP; your security code is ready below).',
-            devOtp: otp,
-            emailSent: false
+        // If email dispatch failed (e.g. Render outbound SMTP block or missing provider)
+        console.error(`\n❌ [Email Delivery Failure] Could not send OTP email to ${cleanEmail}. Reason: ${dispatchResult.reason || 'Unknown error'}\n`);
+        return res.status(502).json({
+            message: 'Unable to deliver OTP email. Render free tier blocks outbound SMTP ports (25, 465, 587). Please configure Brevo or Resend in Render environment variables.',
+            emailSent: false,
+            devOtp: process.env.NODE_ENV === 'test' ? otp : undefined
         });
 
     } catch (error) {
